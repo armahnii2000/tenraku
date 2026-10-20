@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falling — CMY Light Puzzles (canvas)</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--line:#3a3f47;--txt:#eef0f3;--mut:#9aa3ad;--acc:#4da3ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:560px;width:100%;padding:18px 14px 28px}
+  h1{font-size:19px;margin:2px 0 4px;text-align:center}
+  .sub{font-size:13px;color:var(--mut);text-align:center;line-height:1.5;margin:0 8px 12px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 0}
+  button{font:inherit;font-size:13.5px;padding:8px 14px;border-radius:999px;border:1px solid #3a3f47;background:var(--panel);color:var(--txt);cursor:pointer}
+  button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary{background:#eef0f3;color:#111;border-color:#eef0f3;font-weight:600}
+  canvas{display:block;margin:6px auto;border-radius:18px;background:#14161a;width:100%;max-width:440px;height:auto}
+  #readout{min-height:44px;text-align:center;font-size:14px;line-height:1.65;padding:6px 6px 0}
+  .chip{display:inline-block;width:15px;height:15px;border-radius:4px;border:1px solid #7a828c;vertical-align:-2px;margin:0 3px}
+  .desc{font-size:13.5px;line-height:1.55;color:var(--mut);text-align:center;margin:4px 10px 0}
+  .desc b{color:var(--txt)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CMY Light Puzzles — the line IS the light</h1>
+  <p class="sub">Press <b>Play solution</b> and watch the travelling light. Its colour changes <i>at</i> the filter dot it passes: Cyan removes <b>red</b> · Magenta removes <b>green</b> · Yellow removes <b>blue</b>. Start WHITE (red+green+blue) — arrive BLACK.</p>
+  <div class="bar">
+    <button id="b0" class="on">A · Filter Dots</button>
+    <button id="b1">B · The Colour Gate</button>
+    <button id="b2">C · Mix the Regions</button>
+  </div>
+  <p class="desc" id="desc"></p>
+  <canvas id="cv" width="880" height="880"></canvas>
+  <div class="bar">
+    <button id="play" class="primary">▶ Play solution</button>
+    <button id="full">Show full solution</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div id="readout">Pick a board, then play its solution.</div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const INK={C:'#00e5ff',M:'#ff2fb3',Y:'#ffd800'};
+const NAMES={'111':'WHITE','011':'CYAN','101':'MAGENTA','110':'YELLOW','001':'BLUE','010':'GREEN','100':'RED','000':'BLACK'};
+const EX=[
+ {title:'A · Filter Dots',rows:4,cols:4,type:'nodes',
+  desc:'Snake through <b>Cyan \u2192 Yellow \u2192 Magenta</b>. Colours to watch for: white, then <b>cyan</b>, then <b>green</b> (Yellow ate the blue out of the cyan light), then <b>black</b>.',
+  filters:{'1,1':'C','3,1':'Y','2,3':'M'},start:[1,0],exit:[0,3],
+  sol:[[1,0],[1,1],[2,1],[3,1],[3,2],[2,2],[2,3],[1,3],[0,3]]},
+ {title:'B · The Colour Gate',rows:3,cols:5,type:'nodes',
+  desc:'<b>Cyan + Magenta first</b> = pure <b>blue</b>, the only colour the gate passes. <b>Yellow is saved for after the gate</b> \u2014 it removes the last blue \u2192 black. The Yellow dot at bottom-left is a trap: touch it early and the light turns green and the gate stays shut.',
+  filters:{'1,1':'C','0,1':'M','2,1':'Y','1,3':'Y'},start:[1,0],exit:[1,4],gate:[1,2],
+  sol:[[1,0],[1,1],[0,1],[0,2],[1,2],[1,3],[1,4]]},
+ {title:'C · Mix the Regions',rows:3,cols:3,type:'cells',
+  desc:'This line is a <i>cut</i>, not travelling light \u2014 it passes no filter dots, so it stays <b>white</b>. What turns black is each <b>region</b>: each side holds Cyan+Magenta+Yellow, which mix to black. Play it and watch both sides shade black at the end.',
+  cells:{'0,0':'C','0,2':'M','1,0':'Y','1,2':'C','2,0':'M','2,2':'Y'},
+  start:[0,1],exit:[3,1],sol:[[0,1],[1,1],[2,1],[3,1]]}
+];
+let cur=0, anim=null, progress=0, showFull=false;
+const readout=document.getElementById('readout'), descEl=document.getElementById('desc');
+
+function bitsStr(b){return b.join('');}
+function rgbOf(b){return 'rgb('+(b[0]*255)+','+(b[1]*255)+','+(b[2]*255)+')';}
+function applyFilter(b,f){const a=b.slice(); if(f==='C')a[0]=0; if(f==='M')a[1]=0; if(f==='Y')a[2]=0; return a;}
+
+// Precompute, for each solution segment, the light state while travelling it:
+// state AFTER processing the node the segment starts at.
+function segmentStates(ex){
+  let st=[1,1,1]; const out=[];
+  for(let i=0;i<ex.sol.length-1;i++){
+    const f=ex.filters ? ex.filters[ex.sol[i][0]+','+ex.sol[i][1]] : null;
+    if(f) st=applyFilter(st,f);
+    out.push(st.slice());
+  }
+  return out;
+}
+// State when arriving at each node (for readout)
+function nodeStates(ex){
+  let st=[1,1,1]; const out=[st.slice()];
+  for(let i=1;i<ex.sol.length;i++){
+    const f=ex.filters ? ex.filters[ex.sol[i][0]+','+ex.sol[i][1]] : null;
+    if(f) st=applyFilter(st,f);
+    out.push(st.slice());
+  }
+  return out;
+}
+
+function layout(ex){
+  const S=880, pad=150, W=S-pad*2;
+  if(ex.type==='cells'){ const dx=W/ex.cols, dy=W/ex.rows; return {S,pad,W,dx,dy,
+     pt:(p)=>[pad+p[1]*dx, pad+p[0]*dy]}; }
+  const dx=W/(ex.cols-1), dy=W/(ex.rows-1); return {S,pad,W,dx,dy,
+     pt:(p)=>[pad+p[1]*dx, pad+p[0]*dy]};
+}
+
+function draw(ex, upto){
+  const L=layout(ex); ctx.clearRect(0,0,880,880);
+  ctx.fillStyle='#14161a'; ctx.beginPath(); ctx.roundRect(0,0,880,880,36); ctx.fill();
+  const segSt = ex.type==='cells' ? null : segmentStates(ex);
+  if(ex.type==='cells'){
+    const {pad,W,dx,dy}=L;
+    if(upto>=ex.sol.length-1){ // regions turn black once cut is complete
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(pad,pad,W,W);
+    }
+    for(let r=0;r<ex.rows;r++)for(let c=0;c<ex.cols;c++){
+      ctx.strokeStyle='#4a4f57'; ctx.lineWidth=3; ctx.strokeRect(pad+c*dx,pad+r*dy,dx,dy);
+      const col=ex.cells[r+','+c];
+      if(col){ ctx.fillStyle=INK[col]; ctx.beginPath(); ctx.roundRect(pad+c*dx+dx/2-30,pad+r*dy+dy/2-30,60,60,10); ctx.fill();
+        ctx.fillStyle=col==='Y'?'#5a4700':'#14161a'; ctx.font='800 30px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(col,pad+c*dx+dx/2,pad+r*dy+dy/2+2); }
+    }
+    // the cut (white the whole way)
+    drawPath(ex,L,upto,(i)=>[1,1,1]);
+    ctx.fillStyle='#e8e8e8'; ctx.font='700 24px system-ui'; ctx.textAlign='center';
+    ctx.fillText('START (top)', L.pt(ex.start)[0]+150, L.pt(ex.start)[1]+8);
+    if(upto>=ex.sol.length-1){ ctx.fillStyle='#e8e8e8'; ctx.font='700 26px system-ui';
+      ctx.fillText('REGION = BLACK \u2713', pad+W/4, pad+W+52);
+      ctx.fillText('REGION = BLACK \u2713', pad+3*W/4, pad+W+52); }
+  } else {
+    const {pad}=L;
+    // grid lines
+    ctx.strokeStyle='#3a3f47'; ctx.lineWidth=4;
+    for(let r=0;r<ex.rows;r++){ ctx.beginPath(); ctx.moveTo(...L.pt([r,0])); ctx.lineTo(...L.pt([r,ex.cols-1])); ctx.stroke(); }
+    for(let c=0;c<ex.cols;c++){ ctx.beginPath(); ctx.moveTo(...L.pt([0,c])); ctx.lineTo(...L.pt([ex.rows-1,c])); ctx.stroke(); }
+    drawPath(ex,L,upto,(i)=>segSt[i]);
+    // dots
+    for(let r=0;r<ex.rows;r++)for(let c=0;c<ex.cols;c++){
+      const [x,y]=L.pt([r,c]); const f=ex.filters[r+','+c];
+      const isStart=ex.start[0]===r&&ex.start[1]===c, isExit=ex.exit[0]===r&&ex.exit[1]===c,
+            isGate=ex.gate&&ex.gate[0]===r&&ex.gate[1]===c;
+      if(isExit){ ctx.fillStyle='#000'; ctx.strokeStyle='#9aa0a8'; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.roundRect(x-30,y-30,60,60,12); ctx.fill(); ctx.stroke();
+        ctx.fillStyle='#e8e8e8'; ctx.font='700 22px system-ui'; ctx.textAlign='center'; ctx.fillText('EXIT: wants BLACK',x,y+62); }
+      else if(isStart){ ctx.fillStyle='#fff'; ctx.strokeStyle='#888'; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle='#e8e8e8'; ctx.font='700 22px system-ui'; ctx.textAlign='center'; ctx.fillText('START: WHITE',x,y-48); }
+      else if(isGate){ ctx.strokeStyle='#2b6cff'; ctx.lineWidth=11; ctx.beginPath(); ctx.arc(x,y,32,0,7); ctx.stroke();
+        ctx.fillStyle='#2b6cff'; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill();
+        ctx.fillStyle='#7aa8ff'; ctx.font='700 22px system-ui'; ctx.textAlign='center'; ctx.fillText('BLUE GATE',x,y+66); }
+      else if(f){ ctx.fillStyle=INK[f]; ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill();
+        ctx.fillStyle=f==='Y'?'#5a4700':'#14161a'; ctx.font='800 26px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(f,x,y+2); ctx.textBaseline='alphabetic'; }
+      else { ctx.fillStyle='#2a2e35'; ctx.strokeStyle='#555c66'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill(); ctx.stroke(); }
+    }
+  }
+}
+
+// upto = number of segments fully drawn, plus fractional part draws a partial last segment
+function drawPath(ex,L,upto,stateFor){
+  const sol=ex.sol; const total=sol.length-1;
+  const full=Math.min(Math.floor(upto),total), frac=upto-full;
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let i=0;i<full;i++) seg(L.pt(sol[i]),L.pt(sol[i+1]),stateFor(i),1);
+  if(full<total&&frac>0){ const a=L.pt(sol[full]),b=L.pt(sol[full+1]);
+    seg(a,[a[0]+(b[0]-a[0])*frac, a[1]+(b[1]-a[1])*frac],stateFor(full),1);
+    // travelling light head
+    const st=stateFor(full); const hx=a[0]+(b[0]-a[0])*frac, hy=a[1]+(b[1]-a[1])*frac;
+    ctx.fillStyle=rgbOf(st); ctx.strokeStyle= bitsStr(st)==='000' ? '#9aa0a8' : 'rgba(255,255,255,0.65)';
+    ctx.lineWidth=3; ctx.beginPath(); ctx.arc(hx,hy,17,0,7); ctx.fill(); ctx.stroke();
+  }
+  function seg(a,b,st,alpha){
+    if(bitsStr(st)==='000'){ // black light: grey dashed guide underneath, black core
+      ctx.strokeStyle='#9aa0a8'; ctx.lineWidth=20; ctx.setLineDash([4,14]);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.strokeStyle=rgbOf(st); ctx.lineWidth=13;
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+}
+
+function readoutFor(ex,segIdx){
+  if(ex.type==='cells'){ readout.innerHTML = segIdx>=ex.sol.length-1
+      ? 'Cut complete. The line stayed <span class="chip" style="background:#fff"></span><b>WHITE</b> \u2014 both regions hold C+M+Y and mix to <span class="chip" style="background:#000"></span><b>BLACK</b> \u2713'
+      : 'Drawing the cut\u2026 the line stays <span class="chip" style="background:#fff"></span><b>WHITE</b> \u2014 nothing filters it.';
+    return; }
+  const ns=nodeStates(ex);
+  // current segment index clamped
+  const i=Math.min(segIdx, ex.sol.length-1);
+  const st=ns[i]; const key=bitsStr(st);
+  let msg='Light so far: <span class="chip" style="background:'+rgbOf(st)+'"></span><b>'+NAMES[key]+'</b>';
+  const f=ex.filters[ex.sol[i][0]+','+ex.sol[i][1]];
+  if(f&&i>0) msg+=' \u2014 just passed the <b>'+f+'</b> filter';
+  if(ex.gate&&ex.gate[0]===ex.sol[i][0]&&ex.gate[1]===ex.sol[i][1]) msg+= key==='001' ? ' \u2014 <b>BLUE GATE lets it through \u2713</b>' : ' \u2014 gate would reject this colour!';
+  if(i===ex.sol.length-1) msg+= key==='000' ? ' \u2014 at the EXIT: <b>BLACK \u2713 it opens.</b>' : ' \u2014 at the EXIT still '+NAMES[key]+': it stays shut.';
+  readout.innerHTML=msg;
+}
+
+function setEx(i){ cur=i; if(anim)cancelAnimationFrame(anim); anim=null; progress=0; showFull=false;
+  [0,1,2].forEach(j=>document.getElementById('b'+j).classList.toggle('on',j===i));
+  descEl.innerHTML='<b>'+EX[i].title+'.</b> '+EX[i].desc;
+  draw(EX[i],0); readoutFor(EX[i],0);
+  readout.innerHTML = EX[i].type==='cells' ? 'Press Play to draw the cut.' : 'At START: <span class="chip" style="background:#fff"></span><b>WHITE</b> light. Press Play.';
+}
+document.getElementById('b0').onclick=()=>setEx(0);
+document.getElementById('b1').onclick=()=>setEx(1);
+document.getElementById('b2').onclick=()=>setEx(2);
+document.getElementById('full').onclick=()=>{ if(anim)cancelAnimationFrame(anim); anim=null; const ex=EX[cur]; progress=ex.sol.length-1; draw(ex,progress); readoutFor(ex,progress); };
+document.getElementById('clear').onclick=()=>{ if(anim)cancelAnimationFrame(anim); anim=null; progress=0; draw(EX[cur],0); readout.innerHTML='Cleared. Press Play solution.'; };
+document.getElementById('play').onclick=()=>{
+  if(anim)cancelAnimationFrame(anim);
+  const ex=EX[cur]; progress=0; const total=ex.sol.length-1; const t0=performance.now(), dur=total*850;
+  function step(now){ const k=Math.min((now-t0)/dur,1); progress=k*total; draw(ex,progress); readoutFor(ex,Math.round(progress));
+    if(k<1) anim=requestAnimationFrame(step); else anim=null; }
+  anim=requestAnimationFrame(step);
+};
+setEx(0);
+</script>
+</body>
+</html>

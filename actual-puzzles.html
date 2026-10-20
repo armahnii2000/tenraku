@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actual Puzzles — worked examples from the families the research named</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--txt:#eef0f3;--mut:#9aa3ad;--acc:#4da3ff;--line:#3a3f47}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:620px;width:100%;padding:18px 14px 34px}
+  h1{font-size:20px;text-align:center;margin:4px 0 6px}
+  .sub{font-size:13.5px;color:var(--mut);text-align:center;line-height:1.55;margin:0 10px 18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 16px 12px;margin:0 0 18px}
+  .card h2{font-size:16.5px;margin:0 0 2px}
+  .from{font-size:12px;color:var(--acc);margin:0 0 8px}
+  .rules{font-size:13.5px;line-height:1.55;color:var(--mut);margin:0 0 10px}
+  .rules b{color:var(--txt)}
+  .steal{font-size:13px;line-height:1.5;background:#101318;border:1px dashed var(--line);border-radius:10px;padding:8px 11px;margin-top:10px}
+  .steal b{color:#ffd800}
+  svg{display:block;margin:0 auto;max-width:100%;height:auto}
+  button{font:inherit;font-size:13.5px;padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:#1d2129;color:var(--txt);cursor:pointer;display:block;margin:10px auto 2px}
+  button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .cap{font-size:12.5px;color:var(--mut);text-align:center;min-height:18px;margin-top:4px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Actual Puzzles</h1>
+  <p class="sub">Six real puzzles from the families the research catalogued — boards drawn, rules in plain words, and a <b>solution button</b> on every one. Every solution below was checked against its puzzle's rules by a script before this page was sent. These are worked examples (checked solutions), not certified competition puzzles with proven unique solutions.</p>
+  <div id="cards"></div>
+</div>
+<script>
+const DATA={
+ masyu:{cycle:[[0,1],[0,2],[0,3],[1,3],[2,3],[2,2],[2,1],[1,1]],
+        white:[[0,2],[1,1],[1,3]], black:[[2,3]]},
+ nurikabe:{clues:{'0,0':2,'0,4':4,'2,1':1,'4,0':3,'4,4':4},
+        sea:[[0,2],[1,0],[1,1],[1,2],[2,0],[2,2],[2,3],[2,4],[3,1],[3,2],[4,2]]},
+ hashi:{islands:{'0,0':2,'0,2':4,'0,4':3,'2,0':4,'2,2':5,'2,4':4,'4,0':2,'4,2':3,'4,4':3},
+        bridges:[['0,0','0,2',1],['0,2','0,4',2],['0,0','2,0',1],['0,4','2,4',1],['2,0','2,2',2],['2,2','2,4',1],['2,0','4,0',1],['2,4','4,4',2],['4,0','4,2',1],['4,2','4,4',1],['0,2','2,2',1],['2,2','4,2',1]]},
+ slitherlink:{clues:{'1,1':2,'1,2':2,'2,1':2,'2,2':2,'0,1':1,'0,2':1,'3,1':1,'3,2':1,'1,0':1,'2,0':1,'1,3':1,'2,3':1},
+        loopDots:[[1,1],[1,3],[3,3],[3,1]]},
+ blackbox:{balls:[[2,0],[1,2],[3,3]],
+        shots:[
+         {id:'A',from:'top, column 1',result:'H — absorbed (a ball is in the way)'},
+         {id:'B',from:'right side, row 2',result:'H — absorbed'},
+         {id:'C',from:'left side, row 4',result:'R — reflected straight back out (a ball sits beside the entry)'},
+         {id:'D',from:'left side, row 1',result:'deflected — comes out the top, column 2'},
+         {id:'E',from:'bottom, column 5',result:'deflected — comes out the right side, row 5'},
+         {id:'F',from:'bottom, column 4',result:'? — your turn to predict. Answer in the solution.'}]},
+ lasermaze:{laser:[4,0],splitter:[4,2],mirror:[0,2],targets:[[4,4],[0,4]],
+        beamMain:[[4,0],[4,2],[4,4]], beamBranch:[[4,2],[0,2],[0,4]]}
+};
+const NS='http://www.w3.org/2000/svg';
+function svgEl(n,attrs,parent){const e=document.createElementNS(NS,n);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function txt(parent,x,y,s,size,fill,weight){const t=svgEl('text',{x:x,y:y,'text-anchor':'middle','dominant-baseline':'central','font-size':size||14,fill:fill||'#eef0f3','font-weight':weight||600},parent);t.textContent=s;return t;}
+function board(w,h,cell){const s=svgEl('svg',{width:w,height:h,viewBox:'0 0 '+w+' '+h});return s;}
+
+function renderMasyu(show){
+  const cell=62,off=26,S=cell*5+off*2,s=board(S,S,cell);
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++)svgEl('rect',{x:off+c*cell,y:off+r*cell,width:cell,height:cell,fill:'#1a1e26',stroke:'#3a3f47'},s);
+  if(show){const pts=DATA.masyu.cycle.map(p=>[(off+p[1]*cell+cell/2),(off+p[0]*cell+cell/2)].join(',')).join(' ');
+    svgEl('polygon',{points:pts,fill:'none',stroke:'#ffd800','stroke-width':7,'stroke-linejoin':'round'},s);}
+  DATA.masyu.white.forEach(p=>{svgEl('circle',{cx:off+p[1]*cell+cell/2,cy:off+p[0]*cell+cell/2,r:15,fill:'#fff',stroke:'#111','stroke-width':2.5},s);});
+  DATA.masyu.black.forEach(p=>{svgEl('circle',{cx:off+p[1]*cell+cell/2,cy:off+p[0]*cell+cell/2,r:15,fill:'#111',stroke:'#eef0f3','stroke-width':2.5},s);});
+  return s;
+}
+function renderNurikabe(show){
+  const cell=62,off=10,S=cell*5+off*2,s=board(S,S,cell);
+  const sea=new Set(DATA.nurikabe.sea.map(p=>p[0]+','+p[1]));
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const isSea=sea.has(r+','+c);
+    svgEl('rect',{x:off+c*cell,y:off+r*cell,width:cell,height:cell,fill:show?(isSea?'#232a38':'#e8ecf2'):'#1a1e26',stroke:'#3a3f47'},s);
+    const cl=DATA.nurikabe.clues[r+','+c];
+    if(cl)txt(s,off+c*cell+cell/2,off+r*cell+cell/2,cl,22,show?'#14161a':'#eef0f3',800);
+    else if(show&&!isSea)txt(s,off+c*cell+cell/2,off+r*cell+cell/2,'·',18,'#8a93a0',700);
+  }
+  return s;
+}
+function renderHashi(show){
+  const cell=78,off=44,S=cell*4+off*2,s=board(S,S,cell);
+  const P=k=>k.split(',').map(Number);
+  if(show)DATA.hashi.bridges.forEach(([a,b,n])=>{const A=P(a),B=P(b);
+    for(let i=0;i<n;i++){const o=n===1?0:(i===0?-6:6);
+      if(A[0]===B[0])svgEl('line',{x1:off+A[1]*cell,y1:off+A[0]*cell+o,x2:off+B[1]*cell,y2:off+B[0]*cell+o,stroke:'#4da3ff','stroke-width':4},s);
+      else svgEl('line',{x1:off+A[1]*cell+o,y1:off+A[0]*cell,x2:off+B[1]*cell+o,y2:off+B[0]*cell,stroke:'#4da3ff','stroke-width':4},s);}});
+  for(const k in DATA.hashi.islands){const p=P(k);
+    svgEl('circle',{cx:off+p[1]*cell,cy:off+p[0]*cell,r:21,fill:'#e8ecf2',stroke:'#3a3f47','stroke-width':2},s);
+    txt(s,off+p[1]*cell,off+p[0]*cell,DATA.hashi.islands[k],20,'#14161a',800);}
+  return s;
+}
+function renderSlither(show){
+  const cell=62,off=30,S=cell*4+off*2,s=board(S,S,cell);
+  for(const k in DATA.slitherlink.clues){const p=k.split(',').map(Number);
+    txt(s,off+p[1]*cell+cell/2,off+p[0]*cell+cell/2,DATA.slitherlink.clues[k],20,'#9aa3ad',700);}
+  if(show){const d=DATA.slitherlink.loopDots;
+    const pts=d.map(p=>[(off+p[1]*cell),(off+p[0]*cell)].join(',')).join(' ');
+    svgEl('polygon',{points:pts,fill:'none',stroke:'#ffd800','stroke-width':7,'stroke-linejoin':'round'},s);}
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++)svgEl('circle',{cx:off+c*cell,cy:off+r*cell,r:4.5,fill:'#eef0f3'},s);
+  return s;
+}
+function renderBlackBox(show){
+  const cell=58,off=52,S=cell*5+off*2,s=board(S,S,cell);
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++)svgEl('rect',{x:off+c*cell,y:off+r*cell,width:cell,height:cell,fill:'#1a1e26',stroke:'#3a3f47'},s);
+  const C=(r,c)=>[off+c*cell+cell/2,off+r*cell+cell/2];
+  // entry labels: shots A top col0, F bottom col3, E bottom col4, B right row1, C left row3(row index 3), D left row0
+  txt(s,...C(-1,0).map((v,i)=>i===1?off-24:v),'A',15,'#ffd800',800);
+  txt(s,off+5*cell+24,off+1*cell+cell/2,'B',15,'#ffd800',800);
+  txt(s,off-24,off+3*cell+cell/2,'C',15,'#ffd800',800);
+  txt(s,off-24,off+0*cell+cell/2,'D',15,'#ffd800',800);
+  txt(s,off+4*cell+cell/2,off+5*cell+24,'E',15,'#ffd800',800);
+  txt(s,off+3*cell+cell/2,off+5*cell+24,'F',15,'#ffd800',800);
+  if(show){
+    const line=(pts,col)=>{svgEl('polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',stroke:col,'stroke-width':5,'stroke-linecap':'round'},s);};
+    line([[off+0*cell+cell/2,off-8],C(0,0),C(1,0),C(2,0)],'#ff5a5a');                        // A down to ball
+    line([[off+5*cell+8,off+1*cell+cell/2],C(1,4),C(1,3),C(1,2)],'#ff5a5a');                 // B west to ball
+    line([[off-8,off+3*cell+cell/2],[off+16,off+3*cell+cell/2]],'#c792ff');                 // C reflected stub
+    svgEl('polygon',{points:(off+16)+','+(off+3*cell+cell/2-6)+' '+(off+28)+','+(off+3*cell+cell/2)+' '+(off+16)+','+(off+3*cell+cell/2+6),fill:'#c792ff'},s);
+    line([[off-8,off+0*cell+cell/2],C(0,0),C(0,1),[off+1*cell+cell/2,off-8]],'#4da3ff');    // D deflect up
+    line([[off+4*cell+cell/2,off+5*cell+8],C(4,4),[off+5*cell+8,off+4*cell+cell/2]],'#4da3ff'); // E deflect right
+    line([[off+3*cell+cell/2,off+5*cell+8],C(4,3),C(3,3)],'#7dff9a');                       // F answer: H
+    DATA.blackbox.balls.forEach(b=>{const p=C(b[0],b[1]);
+      svgEl('circle',{cx:p[0],cy:p[1],r:17,fill:'#eef0f3',stroke:'#111','stroke-width':2},s);});
+  }
+  return s;
+}
+function renderLaser(show){
+  const cell=62,off=30,S=cell*5+off*2,s=board(S,S,cell);
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++)svgEl('rect',{x:off+c*cell,y:off+r*cell,width:cell,height:cell,fill:'#1a1e26',stroke:'#3a3f47'},s);
+  const C=(r,c)=>[off+c*cell+cell/2,off+r*cell+cell/2];
+  if(show){const pts=DATA.lasermaze.beamMain.map(p=>C(p[0],p[1])); pts.unshift([off+4,C(4,0)[1]]);
+    svgEl('polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',stroke:'#ff2b2b','stroke-width':6,'stroke-linecap':'round'},s);
+    const pts2=DATA.lasermaze.beamBranch.map(p=>C(p[0],p[1]));
+    svgEl('polyline',{points:pts2.map(p=>p.join(',')).join(' '),fill:'none',stroke:'#ff2b2b','stroke-width':6,'stroke-linecap':'round'},s);}
+  // laser source
+  const lp=C(4,0); svgEl('rect',{x:lp[0]-24,y:lp[1]-14,width:30,height:28,rx:5,fill:'#ff2b2b'},s);
+  txt(s,off+6,lp[1],'LASER',10,'#eef0f3',800);
+  // splitter
+  const sp=C(4,2); svgEl('polygon',{points:(sp[0])+','+(sp[1]-19)+' '+(sp[0]+19)+','+(sp[1])+' '+(sp[0])+','+(sp[1]+19)+' '+(sp[0]-19)+','+(sp[1]),fill:'#c792ff',stroke:'#eef0f3','stroke-width':2},s);
+  // mirror
+  const mp=C(0,2); svgEl('polygon',{points:(mp[0]-19)+','+(mp[1]+19)+' '+(mp[0]+19)+','+(mp[1]+19)+' '+(mp[0]+19)+','+(mp[1]-19),fill:'#9fd8ff',stroke:'#eef0f3','stroke-width':2},s);
+  // targets
+  DATA.lasermaze.targets.forEach(t=>{const p=C(t[0],t[1]);
+    svgEl('circle',{cx:p[0],cy:p[1],r:18,fill:'none',stroke:'#7dff9a','stroke-width':4},s);
+    svgEl('circle',{cx:p[0],cy:p[1],r:8,fill:'#7dff9a'},s);});
+  return s;
+}
+
+const CARDS=[
+ {title:'1 · Masyu (Pearl)',from:'From Simon Tatham\u2019s collection / Nikoli \u2014 research \u00a75\u2019s \u201ccheapest rule\u201d',
+  rules:'Draw <b>one loop</b> through cell centres. A <b>white pearl</b>: the loop goes <b>straight</b> through it, but must <b>turn</b> in at least one cell beside it. A <b>black pearl</b>: the loop must <b>turn on it</b>, and go <b>straight</b> through both cells beside it. Try to see the loop before you peek.',
+  render:renderMasyu,cap:'Loop shown. Check one black pearl (bottom right): it turns there, and both neighbours are crossed straight.',
+  steal:'<b>For Falling:</b> pearl dots on our grid \u2014 \u201cyou must turn here / go straight here\u201d \u2014 cost almost nothing and force route planning instead of wandering.'},
+ {title:'2 · Nurikabe',from:'Nikoli \u2014 the research\u2019s \u201cdarkness bookkeeping\u201d source',
+  rules:'Shade some cells as <b>sea (dark)</b>, leave the rest as <b>islands (light)</b>. Each island contains <b>exactly one number</b>, and the number is the island\u2019s size. All the sea must be <b>one connected region</b>, and the sea may <b>never form a solid 2\u00d72 square</b>. Islands may not touch each other (except diagonally).',
+  render:renderNurikabe,cap:'Solution shown: 5 islands of sizes 2, 4, 1, 3, 4 \u2014 and 11 sea cells, all connected, no 2\u00d72 pool anywhere.',
+  steal:'<b>For Falling:</b> the cells your light <i>doesn\u2019t</i> touch are the darkness. \u201cArrive black \u2014 but the darkness must stay in one piece, with no 2\u00d72 pools.\u201d Don\u2019t strand any darkness.'},
+ {title:'3 · Hashi (Bridges)',from:'Nikoli / Tatham \u2014 the research\u2019s exact-degree rule',
+  rules:'Connect the islands with horizontal/vertical bridges. Each island\u2019s number is <b>exactly</b> how many bridge-ends touch it. At most <b>2 bridges</b> between the same pair, bridges may not cross, and everything must end up <b>one connected network</b>.',
+  render:renderHashi,cap:'Solution shown. The centre island really does need 5 bridge-ends \u2014 count them.',
+  steal:'<b>For Falling:</b> numbered junction dots where prism beams split or cross \u2014 \u201cexactly 3 beam-ends must meet here.\u201d'},
+ {title:'4 · Slitherlink',from:'Nikoli / Tatham\u2019s Loopy \u2014 the research\u2019s edge-count rule',
+  rules:'Draw <b>one closed loop</b> along the dot grid. A number in a cell says <b>exactly how many of that cell\u2019s 4 edges</b> are part of the loop. (This example\u2019s loop is the border of the middle 2\u00d72 block \u2014 verify a couple of numbers against it.)',
+  render:renderSlither,cap:'Loop shown. Every printed number matches the loop edges around its cell \u2014 corners of the block read 2, neighbours read 1.',
+  steal:'<b>For Falling:</b> numbered cells the beam passes \u2014 \u201cyour light may only clip a corner of this room (1 edge), not cross it.\u201d'},
+ {title:'5 · Black Box',from:'Simon Tatham \u2014 the research\u2019s hidden-absorber idea',
+  rules:'<b>3 balls are hidden</b> in the 5\u00d75 box. You fire rays in from the lettered edges and only see what comes out: <b>H</b> = hit/absorbed, <b>R</b> = reflected straight back (a ball beside the entry does this), a ray passing a ball\u2019s front corner <b>deflects 90\u00b0</b>. Given: '+DATA.blackbox.shots.map(s=>'<b>'+s.id+'</b> ('+s.from+'): '+s.result).join(' \u00b7 '),
+  render:renderBlackBox,cap:'Balls + every ray path shown, including F: straight up into a ball \u2014 H.',
+  steal:'<b>For Falling:</b> hidden \u201csoot\u201d dots you cannot see. Test-fire cheap beams, read the deflections, deduce where the darkness sits \u2014 then draw your real trace.'},
+ {title:'6 · Laser Maze challenge',from:'ThinkFun\u2019s Laser Maze \u2014 the research\u2019s #1 ranked idea (placed pieces)',
+  rules:'A real style of Laser Maze setup: the <b>laser</b> (bottom left) fires right. Tokens already placed: a <b>beam splitter</b> (purple diamond \u2014 half the beam passes through, half reflects up) and a <b>mirror</b> (blue triangle, top row). Both <b>targets</b> (green rings) must be lit by the one shot. Fire it and trace both beam paths with your eye.',
+  render:renderLaser,cap:'Beam shown: straight through the splitter to the bottom target; the reflected half climbs, turns at the mirror, and lights the top target.',
+  steal:'<b>For Falling:</b> this is the mirror stage we already ranked #1 \u2014 a few placeable pieces, and difficulty by <i>withholding</i> placement hints, exactly as Laser Maze\u2019s challenge cards do.'}
+];
+const cardsEl=document.getElementById('cards');
+CARDS.forEach((cd,idx)=>{
+  const div=document.createElement('div'); div.className='card';
+  div.innerHTML='<h2>'+cd.title+'</h2><p class="from">'+cd.from+'</p><p class="rules">'+cd.rules+'</p>';
+  const holder=document.createElement('div'); holder.appendChild(cd.render(false)); div.appendChild(holder);
+  const cap=document.createElement('div'); cap.className='cap'; div.appendChild(cap);
+  const btn=document.createElement('button'); btn.textContent='Show solution';
+  btn.onclick=()=>{ const show=btn.className!=='on'; btn.className=show?'on':''; btn.textContent=show?'Hide solution':'Show solution';
+    holder.innerHTML=''; holder.appendChild(cd.render(show)); cap.textContent=show?cd.cap:''; };
+  div.appendChild(btn);
+  const st=document.createElement('div'); st.className='steal'; st.innerHTML=cd.steal; div.appendChild(st);
+  cardsEl.appendChild(div);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dominosa — the small version</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--txt:#eef0f3;--mut:#9aa3ad;--line:#3a3f47;--acc:#4da3ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:480px;width:100%;padding:18px 14px 32px}
+  h1{font-size:20px;text-align:center;margin:4px 0 6px}
+  .sub{font-size:13.5px;color:var(--mut);text-align:center;line-height:1.6;margin:0 6px 12px}
+  .sub b{color:var(--txt)}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;max-width:340px;margin:0 auto}
+  .cell{aspect-ratio:1;border-radius:10px;background:#1d2129;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;cursor:pointer;user-select:none;-webkit-user-select:none}
+  .cell.sel{border-color:var(--acc);background:#233549}
+  .cell.hl{box-shadow:inset 0 0 0 3px #ffd800}
+  .cell.dom{background:#2a4a2e;border-color:#4c9950}
+  .cell.dom.dup{background:#5a2323;border-color:#e5534b}
+  .row{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:12px}
+  button{font:inherit;font-size:13.5px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:#1d2129;color:var(--txt);cursor:pointer}
+  button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  #msg{font-size:14px;text-align:center;min-height:44px;line-height:1.55;margin-top:12px;padding:0 4px}
+  #left{font-size:12.5px;color:var(--mut);text-align:center;line-height:1.7;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dominosa — the small version</h1>
+  <p class="sub">Only <b>10 dominoes</b> (numbers 0–3). Cover the board by pairing neighbouring numbers.<br>
+  <b>Every pair exactly once:</b> 0-0, 0-1, 0-2, 0-3, 1-1, 1-2, 1-3, 2-2, 2-3, 3-3.<br>
+  Tap one number, then tap a neighbour to join them into a domino. Tap a green domino to remove it.</p>
+  <div class="grid" id="grid"></div>
+  <div class="row" id="hlrow"></div>
+  <div id="msg">Start by highlighting a number above and hunting for a pair that appears <b>only once</b> next to each other — that domino is forced.</div>
+  <div id="left"></div>
+  <div class="row"><button id="reset">↺ Start over</button></div>
+</div>
+<script>
+const GRID=[[2,3,0,3],[1,0,2,3],[2,0,2,0],[0,2,3,1],[1,3,1,1]];
+const R=5,C=4, ALLPAIRS=[];
+for(let a=0;a<=3;a++)for(let b=a;b<=3;b++)ALLPAIRS.push(a+'-'+b);
+const key=(a,b)=>a<=b?a+'-'+b:b+'-'+a;
+let domOf=Array.from({length:R},()=>Array(C).fill(-1)); // cell -> domino id
+let doms=[]; // {cells:[[r,c],[r,c]], pair:'a-b'}
+let sel=null, hl=new Set();
+const gridEl=document.getElementById('grid'), msgEl=document.getElementById('msg'), leftEl=document.getElementById('left');
+function render(){
+  gridEl.innerHTML='';
+  const pairCount={}; doms.forEach(d=>pairCount[d.pair]=(pairCount[d.pair]||0)+1);
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+    const d=document.createElement('div'); d.className='cell'; d.textContent=GRID[r][c];
+    const id=domOf[r][c];
+    if(id>=0){ d.classList.add('dom'); if(pairCount[doms[id].pair]>1) d.classList.add('dup'); }
+    if(sel&&sel[0]===r&&sel[1]===c) d.classList.add('sel');
+    if(hl.has(GRID[r][c])) d.classList.add('hl');
+    d.onclick=()=>tap(r,c);
+    gridEl.appendChild(d);
+  }
+  const used=new Set(doms.map(d=>d.pair));
+  const remaining=ALLPAIRS.filter(p=>!used.has(p));
+  leftEl.innerHTML='Dominoes placed: <b>'+doms.length+' / 10</b><br>Pairs still needed: '+(remaining.length?remaining.join(' · '):'none');
+  const dup=Object.keys(pairCount).filter(p=>pairCount[p]>1);
+  if(doms.length===10&&dup.length===0){
+    msgEl.innerHTML='🎉 <b>Solved!</b> All 10 dominoes placed, every pair exactly once — and this board has only one possible solution, so you found <i>the</i> one. That\u2019s Dominosa, start to finish.';
+  } else if(dup.length){
+    msgEl.innerHTML='🔴 Two dominoes are both <b>'+dup.join(' and ')+'</b> — a pair can only be used once, so one of the red ones is in the wrong place.';
+  }
+}
+function tap(r,c){
+  const id=domOf[r][c];
+  if(id>=0){ // remove that domino
+    const d=doms[id];
+    d.cells.forEach(([rr,cc])=>domOf[rr][cc]=-1);
+    doms.splice(id,1);
+    domOf=Array.from({length:R},()=>Array(C).fill(-1));
+    doms.forEach((dd,i)=>dd.cells.forEach(([rr,cc])=>domOf[rr][cc]=i));
+    sel=null; render(); return;
+  }
+  if(!sel){ sel=[r,c]; render(); return; }
+  const [sr,sc]=sel;
+  if(sr===r&&sc===c){ sel=null; render(); return; }
+  if(Math.abs(sr-r)+Math.abs(sc-c)===1){
+    const nid=doms.length;
+    doms.push({cells:[[sr,sc],[r,c]],pair:key(GRID[sr][sc],GRID[r][c])});
+    domOf[sr][sc]=nid; domOf[r][c]=nid; sel=null; render(); return;
+  }
+  sel=[r,c]; render();
+}
+const hlrow=document.getElementById('hlrow');
+[0,1,2,3].forEach(n=>{
+  const b=document.createElement('button'); b.textContent='Highlight '+n;
+  b.onclick=()=>{ if(hl.has(n)) hl.delete(n); else hl.add(n); b.className=hl.has(n)?'on':''; render(); };
+  hlrow.appendChild(b);
+});
+document.getElementById('reset').onclick=()=>{ domOf=Array.from({length:R},()=>Array(C).fill(-1)); doms=[]; sel=null;
+  msgEl.innerHTML='Fresh board. Highlight a number and hunt for the pair that touches in only one place.'; render(); };
+render();
+</script>
+</body>
+</html>

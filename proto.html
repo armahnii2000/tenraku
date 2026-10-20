@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falling — CMY Prototype v0.1 (playable)</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--txt:#eef0f3;--mut:#9aa3ad;--acc:#4da3ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:560px;width:100%;padding:16px 14px 30px}
+  h1{font-size:19px;margin:2px 0 2px;text-align:center}
+  .sub{font-size:13px;color:var(--mut);text-align:center;line-height:1.5;margin:0 8px 8px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+  button{font:inherit;font-size:13.5px;padding:8px 14px;border-radius:999px;border:1px solid #3a3f47;background:var(--panel);color:var(--txt);cursor:pointer}
+  button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary{background:#eef0f3;color:#111;border-color:#eef0f3;font-weight:600}
+  canvas{display:block;margin:4px auto;border-radius:18px;background:#14161a;width:100%;max-width:440px;height:auto;touch-action:none;cursor:pointer}
+  #hud{display:flex;align-items:center;justify-content:center;gap:10px;min-height:40px;font-size:14.5px;flex-wrap:wrap}
+  .chip{display:inline-block;width:17px;height:17px;border-radius:5px;border:1px solid #7a828c;vertical-align:-3px}
+  .pill{display:inline-block;min-width:26px;text-align:center;padding:2px 6px;border-radius:6px;font-weight:700;font-size:12.5px;border:1px solid #3a3f47;color:#59616b}
+  .pill.r{background:#ff2b2b;color:#fff;border-color:#ff2b2b}.pill.g{background:#22cc44;color:#04150a;border-color:#22cc44}.pill.b{background:#2255ff;color:#fff;border-color:#2255ff}
+  #msg{min-height:42px;text-align:center;font-size:14px;line-height:1.55;padding:2px 8px}
+  #msg.win{color:#7dff9a;font-weight:700;font-size:16px}
+  #msg.err{color:#ff9d9d}
+  .hint{font-size:13px;color:var(--mut);text-align:center;line-height:1.5;margin:0 10px}
+  .hint b{color:var(--txt)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CMY Light Puzzles — playable prototype v0.1</h1>
+  <p class="sub"><b>Drag</b> from the white START dot, dot to dot. Your line is your light: filters remove colours as you pass them. Reach the EXIT carrying <b>black</b> light. Drag back over your last dot to undo a step.</p>
+  <div class="bar" id="levels"></div>
+  <p class="hint" id="hint"></p>
+  <canvas id="cv" width="880" height="880"></canvas>
+  <div id="hud"></div>
+  <div id="msg">Drag from START to begin.</div>
+  <div class="bar">
+    <button id="undo">⌫ Undo step</button>
+    <button id="clear">Clear line</button>
+    <button id="playsol">▶ Play solution</button>
+    <button id="next" class="primary" style="display:none">Next level →</button>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const INK={C:'#00e5ff',M:'#ff2fb3',Y:'#ffd800'};
+const NAMES={'111':'WHITE','011':'CYAN','101':'MAGENTA','110':'YELLOW','001':'BLUE','010':'GREEN','100':'RED','000':'BLACK'};
+const LEVELS=[
+ {name:'1 · First Light',rows:2,cols:4,
+  hint:'No choices yet — just walk the line and <b>watch your light change</b>: white \u2192 cyan \u2192 blue \u2192 black.',
+  filters:{'0,1':'C','0,2':'M','0,3':'Y'},start:[0,0],exit:[1,3],
+  sol:[[0,0],[0,1],[0,2],[0,3],[1,3]]},
+ {name:'2 · The Snake',rows:4,cols:4,
+  hint:'The exit is close, but the short way arrives still coloured. <b>Collect all three filters</b> — the long snake is the answer.',
+  filters:{'1,1':'C','3,1':'Y','2,3':'M'},start:[1,0],exit:[0,3],
+  sol:[[1,0],[1,1],[2,1],[3,1],[3,2],[2,2],[2,3],[1,3],[0,3]]},
+ {name:'3 · The Blue Gate',rows:3,cols:5,
+  hint:'The ringed <b>BLUE GATE</b> only lets <b>blue</b> light through (red+green gone, blue alive). Cyan+Magenta before it, Yellow after it. The bottom Yellow is a <b>trap</b>.',
+  filters:{'1,1':'C','0,1':'M','2,1':'Y','1,3':'Y'},start:[1,0],exit:[1,4],gate:{at:[1,2],want:[0,0,1]},
+  sol:[[1,0],[1,1],[0,1],[0,2],[1,2],[1,3],[1,4]]},
+ {name:'4 · The Red Gate',rows:3,cols:6,
+  hint:'This gate wants <b>RED</b> light: Magenta+Yellow before it, and the Cyan waits <i>past</i> it. Touch the spare Cyan (bottom) first and red becomes impossible — Undo or Clear and rethink.',
+  filters:{'0,1':'M','1,2':'Y','2,2':'C','1,4':'C'},start:[1,0],exit:[1,5],gate:{at:[1,3],want:[1,0,0]},
+  sol:[[1,0],[1,1],[0,1],[0,2],[1,2],[1,3],[1,4],[1,5]]},
+ {name:'5 · Blackout',rows:4,cols:5,
+  hint:'An open board with <b>decoy filters</b> scattered around. Any route that eats red, green and blue before the exit wins — find a clean one with no backtracking.',
+  filters:{'0,1':'C','0,3':'M','2,0':'Y','2,4':'C','3,2':'Y','3,4':'M'},start:[3,0],exit:[0,4],
+  sol:[[3,0],[2,0],[1,0],[0,0],[0,1],[0,2],[0,3],[0,4]]}
+];
+let li=0, path=[], dragging=false, won=false, shake=0, playTimer=null;
+const msg=document.getElementById('msg'), hud=document.getElementById('hud'), hintEl=document.getElementById('hint');
+const lvBar=document.getElementById('levels');
+LEVELS.forEach((L,i)=>{const b=document.createElement('button');b.textContent=L.name;b.id='lv'+i;b.onclick=()=>load(i);lvBar.appendChild(b);});
+
+function key(r,c){return r+','+c;}
+function applyF(b,f){const a=b.slice(); if(f==='C')a[0]=0; if(f==='M')a[1]=0; if(f==='Y')a[2]=0; return a;}
+function rgbOf(b){return 'rgb('+(b[0]*255)+','+(b[1]*255)+','+(b[2]*255)+')';}
+function bits(b){return b.join('');}
+// light state after standing on path node i (filters on nodes 0..i applied)
+function stateAt(L,p,i){let st=[1,1,1]; for(let k=0;k<=i;k++){const f=L.filters[key(p[k][0],p[k][1])]; if(f) st=applyF(st,f);} return st;}
+function curState(L){return stateAt(L,path,path.length-1);}
+function layout(L){const pad=150,W=880-pad*2; const dx=W/(L.cols-1), dy=W/(L.rows-1);
+  return {pad,W,dx,dy,pt:(p)=>[pad+p[1]*dx, pad+p[0]*dy]};}
+
+function load(i){ li=i; if(playTimer){clearInterval(playTimer); playTimer=null;}
+  const L=LEVELS[i]; path=[L.start.slice()]; won=false; dragging=false;
+  LEVELS.forEach((_,j)=>document.getElementById('lv'+j).classList.toggle('on',j===i));
+  hintEl.innerHTML='<b>'+L.name+'.</b> '+L.hint;
+  document.getElementById('next').style.display='none';
+  setMsg('Drag from START to begin.','');
+  draw(); updateHud();
+}
+function setMsg(t,cls){ msg.textContent=t; msg.className=cls||''; }
+function updateHud(){ const L=LEVELS[li]; const st=curState(L); const k=bits(st);
+  hud.innerHTML='Your light: <span class="chip" style="background:'+rgbOf(st)+'"></span> <b>'+NAMES[k]+'</b>'+
+   ' <span class="pill r" style="'+(st[0]?'':'opacity:.35;background:transparent')+'">R</span>'+
+   ' <span class="pill g" style="'+(st[1]?'':'opacity:.35;background:transparent')+'">G</span>'+
+   ' <span class="pill b" style="'+(st[2]?'':'opacity:.35;background:transparent')+'">B</span>'+
+   (k==='000' ? ' — <b>black: the exit will open</b>' : '');
+}
+
+function draw(){
+  const L=LEVELS[li], Ly=layout(L);
+  ctx.clearRect(0,0,880,880);
+  ctx.fillStyle='#14161a'; ctx.beginPath(); ctx.roundRect(0,0,880,880,36); ctx.fill();
+  const sx=shake? (Math.random()*10-5):0, sy=shake? (Math.random()*8-4):0;
+  ctx.save(); ctx.translate(sx,sy);
+  ctx.strokeStyle='#3a3f47'; ctx.lineWidth=4;
+  for(let r=0;r<L.rows;r++){ctx.beginPath(); ctx.moveTo(...Ly.pt([r,0])); ctx.lineTo(...Ly.pt([r,L.cols-1])); ctx.stroke();}
+  for(let c=0;c<L.cols;c++){ctx.beginPath(); ctx.moveTo(...Ly.pt([0,c])); ctx.lineTo(...Ly.pt([L.rows-1,c])); ctx.stroke();}
+  // path segments, each in the colour of light that travelled it
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let i=0;i<path.length-1;i++){
+    const st=stateAt(L,path,i), a=Ly.pt(path[i]), b=Ly.pt(path[i+1]);
+    if(bits(st)==='000'){ ctx.strokeStyle='#9aa0a8'; ctx.lineWidth=20; ctx.setLineDash([4,14]);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.strokeStyle=rgbOf(st); ctx.lineWidth=13;
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+  // dots
+  for(let r=0;r<L.rows;r++)for(let c=0;c<L.cols;c++){
+    const [x,y]=Ly.pt([r,c]); const f=L.filters[key(r,c)];
+    const isStart=L.start[0]===r&&L.start[1]===c, isExit=L.exit[0]===r&&L.exit[1]===c,
+          isGate=L.gate&&L.gate.at[0]===r&&L.gate.at[1]===c,
+          inPath=path.some(p=>p[0]===r&&p[1]===c),
+          isHead=path.length&&path[path.length-1][0]===r&&path[path.length-1][1]===c;
+    if(isExit){ ctx.fillStyle= won?'#0d3517':'#000'; ctx.strokeStyle= won?'#39d353':'#9aa0a8'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.roundRect(x-31,y-31,62,62,12); ctx.fill(); ctx.stroke();
+      if(won){ ctx.fillStyle='#7dff9a'; ctx.font='800 34px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('\u2713',x,y+2); ctx.textBaseline='alphabetic'; }
+      ctx.fillStyle='#e8e8e8'; ctx.font='700 21px system-ui'; ctx.textAlign='center'; ctx.fillText('EXIT',x,y+62); }
+    else if(isStart){ ctx.fillStyle='#fff'; ctx.strokeStyle= isHead?'#4da3ff':'#888'; ctx.lineWidth=isHead?6:4;
+      ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#e8e8e8'; ctx.font='700 21px system-ui'; ctx.textAlign='center'; ctx.fillText('START',x,y-48); }
+    else if(isGate){ const gc=rgbOf(L.gate.want);
+      ctx.strokeStyle=gc; ctx.lineWidth=11; ctx.beginPath(); ctx.arc(x,y,32,0,7); ctx.stroke();
+      ctx.fillStyle=gc; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill();
+      ctx.fillStyle=gc; ctx.font='700 20px system-ui'; ctx.textAlign='center'; ctx.fillText(NAMES[bits(L.gate.want)]+' GATE',x,y+68); }
+    else if(f){ ctx.fillStyle=INK[f]; ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill();
+      if(inPath){ ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(x,y,31,0,7); ctx.stroke(); }
+      ctx.fillStyle=f==='Y'?'#5a4700':'#14161a'; ctx.font='800 26px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(f,x,y+2); ctx.textBaseline='alphabetic'; }
+    else { ctx.fillStyle='#2a2e35'; ctx.strokeStyle='#555c66'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill(); ctx.stroke(); }
+    if(isHead&&!isStart){ const st=curState(L); ctx.strokeStyle=rgbOf(st); ctx.lineWidth=5;
+      ctx.beginPath(); ctx.arc(x,y,40,0,7); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+
+function err(t){ setMsg(t,'err'); shake=6; const iv=setInterval(()=>{ draw(); if(--shake<=0){clearInterval(iv); draw();} },40); }
+function tryAdd(r,c){
+  const L=LEVELS[li]; if(won) return;
+  const last=path[path.length-1];
+  if(last[0]===r&&last[1]===c) return;
+  // backtrack: dragging onto the previous node undoes the last step
+  if(path.length>1){ const prev=path[path.length-2]; if(prev[0]===r&&prev[1]===c){ path.pop(); setMsg('Stepped back.',''); draw(); updateHud(); return; } }
+  if(Math.abs(last[0]-r)+Math.abs(last[1]-c)!==1) return;      // neighbours only
+  if(path.some(p=>p[0]===r&&p[1]===c)) return;                  // no revisiting
+  const stBefore=curState(L);
+  const isExit=L.exit[0]===r&&L.exit[1]===c;
+  const isGate=L.gate&&L.gate.at[0]===r&&L.gate.at[1]===c;
+  if(isGate && bits(stBefore)!==bits(L.gate.want)){
+    err('The '+NAMES[bits(L.gate.want)]+' GATE rejects your '+NAMES[bits(stBefore)]+' light \u2014 it only passes '+NAMES[bits(L.gate.want)]+'.'); return; }
+  if(isExit && bits(stBefore)!=='000'){
+    err('The EXIT stays shut \u2014 you arrived carrying '+NAMES[bits(stBefore)]+' light. It only opens for BLACK. Undo and find the filter you missed.'); return; }
+  path.push([r,c]);
+  if(isGate) setMsg('Gate passed \u2014 your light was exactly '+NAMES[bits(L.gate.want)]+'. Now finish it: kill the last colour.','');
+  else if(isExit){ won=true; setMsg('\u2605 BLACK \u2014 the exit opens. Level complete!','win');
+    if(li<LEVELS.length-1) document.getElementById('next').style.display='';
+    LEVELS.forEach((_,j)=>{ if(j===li) document.getElementById('lv'+j).textContent=LEVELS[j].name+' \u2713'; });
+  }
+  else { const f=L.filters[key(r,c)]; if(f){ const st=curState(L);
+      setMsg('Passed the '+f+' filter \u2014 your light is now '+NAMES[bits(st)]+'.',''); } else setMsg('',''); }
+  draw(); updateHud();
+}
+function nodeAt(mx,my){
+  const L=LEVELS[li], Ly=layout(L);
+  for(let r=0;r<L.rows;r++)for(let c=0;c<L.cols;c++){ const [x,y]=Ly.pt([r,c]);
+    if(Math.hypot(mx-x,my-y) < Math.min(Ly.dx,Ly.dy)*0.46) return [r,c]; }
+  return null;
+}
+function evPos(e){ const rect=cv.getBoundingClientRect();
+  return [ (e.clientX-rect.left)*880/rect.width, (e.clientY-rect.top)*880/rect.height ]; }
+cv.addEventListener('pointerdown',e=>{ const n=nodeAt(...evPos(e)); if(!n) return;
+  const last=path[path.length-1];
+  if(n[0]===last[0]&&n[1]===last[1]){ dragging=true; cv.setPointerCapture(e.pointerId); }
+  else tryAdd(n[0],n[1]);
+});
+cv.addEventListener('pointermove',e=>{ if(!dragging) return; const n=nodeAt(...evPos(e)); if(n) tryAdd(n[0],n[1]); });
+cv.addEventListener('pointerup',()=>{ dragging=false; });
+document.getElementById('undo').onclick=()=>{ if(playTimer){clearInterval(playTimer);playTimer=null;}
+  if(path.length>1&&!won){ path.pop(); setMsg('Stepped back.',''); draw(); updateHud(); } };
+document.getElementById('clear').onclick=()=>load(li);
+document.getElementById('next').onclick=()=>load(Math.min(li+1,LEVELS.length-1));
+document.getElementById('playsol').onclick=()=>{
+  if(playTimer) clearInterval(playTimer);
+  const L=LEVELS[li]; load(li); let i=0;
+  playTimer=setInterval(()=>{ i++;
+    if(i>=L.sol.length){ clearInterval(playTimer); playTimer=null; return; }
+    tryAdd(L.sol[i][0],L.sol[i][1]);
+  },380);
+};
+load(0);
+</script>
+</body>
+</html>

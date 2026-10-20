@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falling — CMY Prototype v0.2 (prisms, harder)</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--txt:#eef0f3;--mut:#9aa3ad;--acc:#4da3ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:580px;width:100%;padding:16px 14px 30px}
+  h1{font-size:19px;margin:2px 0 2px;text-align:center}
+  .sub{font-size:13px;color:var(--mut);text-align:center;line-height:1.5;margin:0 8px 8px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+  button{font:inherit;font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid #3a3f47;background:var(--panel);color:var(--txt);cursor:pointer}
+  button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary{background:#eef0f3;color:#111;border-color:#eef0f3;font-weight:600}
+  canvas{display:block;margin:4px auto;border-radius:18px;background:#14161a;width:100%;max-width:460px;height:auto;touch-action:none;cursor:pointer}
+  #hud{display:flex;align-items:center;justify-content:center;gap:10px;min-height:38px;font-size:14.5px;flex-wrap:wrap}
+  .chip{display:inline-block;width:17px;height:17px;border-radius:5px;border:1px solid #7a828c;vertical-align:-3px}
+  .pill{display:inline-block;min-width:26px;text-align:center;padding:2px 6px;border-radius:6px;font-weight:700;font-size:12.5px;border:1px solid #3a3f47;color:#59616b}
+  #msg{min-height:42px;text-align:center;font-size:14px;line-height:1.55;padding:2px 8px}
+  #msg.win{color:#7dff9a;font-weight:700;font-size:16px}
+  #msg.err{color:#ff9d9d}
+  .hint{font-size:13px;color:var(--mut);text-align:center;line-height:1.5;margin:0 10px}
+  .hint b{color:var(--txt)}
+  .setlabel{width:100%;text-align:center;font-size:11.5px;letter-spacing:.12em;color:var(--mut);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CMY Light Puzzles — prototype v0.2 · prisms</h1>
+  <p class="sub"><b>Drag</b> dot to dot. Filters remove colours. A <b>PRISM</b> splits your light into one beam per colour still in it — a <b>coloured prism eats its opposite colour first</b>, so it splits into 2 beams instead of 3. Every beam must reach the COLLECTOR <b>black</b>: find the one filter that kills each beam's colour. Beams may cross each other's trails.</p>
+  <div class="bar" id="levels"></div>
+  <p class="hint" id="hint"></p>
+  <canvas id="cv" width="880" height="880"></canvas>
+  <div id="hud"></div>
+  <div class="bar" id="beams"></div>
+  <div id="msg">Drag from START to begin.</div>
+  <div class="bar">
+    <button id="undo">⌫ Undo step</button>
+    <button id="clear">Restart level</button>
+    <button id="playsol">▶ Play solution</button>
+    <button id="next" class="primary" style="display:none">Next level →</button>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const INK={C:'#00e5ff',M:'#ff2fb3',Y:'#ffd800'};
+const NAMES={'111':'WHITE','011':'CYAN','101':'MAGENTA','110':'YELLOW','001':'BLUE','010':'GREEN','100':'RED','000':'BLACK'};
+const CH=[['R',[1,0,0]],['G',[0,1,0]],['B',[0,0,1]]];
+const LEVELS=[
+ {name:'1 · First Light',rows:2,cols:4,set:'BASICS',
+  hint:'No choices yet — walk the line and <b>watch your light change</b>: white \u2192 cyan \u2192 blue \u2192 black.',
+  filters:{'0,1':'C','0,2':'M','0,3':'Y'},gates:[],start:[0,0],exit:[1,3],
+  sol:[[0,0],[0,1],[0,2],[0,3],[1,3]]},
+ {name:'2 · The Snake',rows:4,cols:4,set:'BASICS',
+  hint:'The exit is close, but the short way arrives still coloured. <b>Collect all three filters</b> — the long snake is the answer.',
+  filters:{'1,1':'C','3,1':'Y','2,3':'M'},gates:[],start:[1,0],exit:[0,3],
+  sol:[[1,0],[1,1],[2,1],[3,1],[3,2],[2,2],[2,3],[1,3],[0,3]]},
+ {name:'3 · The Blue Gate',rows:3,cols:5,set:'BASICS',
+  hint:'The <b>BLUE GATE</b> only lets <b>blue</b> light through. Cyan+Magenta before it, Yellow after it. The bottom Yellow is a <b>trap</b>.',
+  filters:{'1,1':'C','0,1':'M','2,1':'Y','1,3':'Y'},gates:[{at:[1,2],want:[0,0,1]}],start:[1,0],exit:[1,4],
+  sol:[[1,0],[1,1],[0,1],[0,2],[1,2],[1,3],[1,4]]},
+ {name:'4 · The Red Gate',rows:3,cols:6,set:'BASICS',
+  hint:'This gate wants <b>RED</b>: Magenta+Yellow before it, the Cyan waits <i>past</i> it. Touch the spare Cyan (bottom) first and red becomes impossible.',
+  filters:{'0,1':'M','1,2':'Y','2,2':'C','1,4':'C'},gates:[{at:[1,3],want:[1,0,0]}],start:[1,0],exit:[1,5],
+  sol:[[1,0],[1,1],[0,1],[0,2],[1,2],[1,3],[1,4],[1,5]]},
+ {name:'5 · Blackout',rows:4,cols:5,set:'BASICS',
+  hint:'An open board with <b>decoy filters</b>. Any route that eats red, green and blue before the exit wins — no backtracking allowed.',
+  filters:{'0,1':'C','0,3':'M','2,0':'Y','2,4':'C','3,2':'Y','3,4':'M'},gates:[],start:[3,0],exit:[0,4],
+  sol:[[3,0],[2,0],[1,0],[0,0],[0,1],[0,2],[0,3],[0,4]]},
+ {name:'P1 · The Split',rows:5,cols:6,set:'PRISMS — HARDER',
+  hint:'Feed the <b>clear prism</b> and your light becomes <b>3 beams</b> (red, green, blue). Kill each beam with its opposite filter: red dies at <b>C</b>, green at <b>M</b>, blue at <b>Y</b>. Wrong filters do nothing to a beam — watch the bottom blue beam pass a Magenta harmlessly.',
+  filters:{'3,3':'C','0,3':'M','1,0':'Y','4,2':'M'},gates:[],start:[2,0],exit:[4,5],prism:{at:[2,2],color:null},
+  solInput:[[2,0],[2,1],[2,2]],
+  solBeams:{R:[[2,3],[3,3],[3,4],[3,5],[4,5]],G:[[1,3],[0,3],[0,4],[0,5],[1,5],[2,5],[3,5],[4,5]],B:[[1,2],[1,1],[1,0],[2,0],[3,0],[4,0],[4,1],[4,2],[4,3],[4,4],[4,5]]}},
+ {name:'P2 · Cyan Prism',rows:5,cols:6,set:'PRISMS — HARDER',
+  hint:'A <b>CYAN prism</b> eats red before splitting — white light in, only <b>2 beams</b> out (green + blue). Each beam also has a <b>gate in its own colour</b> on its road: pass the gate <i>before</i> you kill the beam, or the gate will reject your black light.',
+  filters:{'0,4':'M','3,1':'Y','0,0':'C','4,1':'M'},gates:[{at:[0,3],want:[0,1,0]},{at:[1,1],want:[0,0,1]}],start:[2,0],exit:[4,5],prism:{at:[2,2],color:'C'},
+  solInput:[[2,0],[2,1],[2,2]],
+  solBeams:{G:[[1,3],[0,3],[0,4],[0,5],[1,5],[2,5],[3,5],[4,5]],B:[[1,2],[1,1],[2,1],[3,1],[3,2],[3,3],[4,3],[4,4],[4,5]]}},
+ {name:'P3 · Feed It Cyan',rows:3,cols:6,set:'PRISMS — HARDER',
+  hint:'A <b>gate before the prism</b> demands <b>CYAN</b> light, so feed the prism through the C filter. A <b>MAGENTA prism</b> then eats the green out of your cyan light — and only <b>one beam</b> comes out. The spare C and M dots are bait for beams that will never exist.',
+  filters:{'1,1':'C','0,5':'Y','2,4':'C','2,1':'M'},gates:[{at:[1,2],want:[0,1,1]}],start:[1,0],exit:[2,5],prism:{at:[1,3],color:'M'},
+  solInput:[[1,0],[1,1],[1,2],[1,3]],
+  solBeams:{B:[[0,3],[0,4],[0,5],[1,5],[2,5]]}},
+ {name:'P4 · Two Gates, Three Beams',rows:6,cols:7,set:'PRISMS — HARDER',
+  hint:'Clear prism, 3 beams, and the green and blue beams each have a <b>gate in their own colour</b> to pass before they may die. Decoys everywhere (top row, far corners). Beams may cross each other — use that.',
+  filters:{'3,5':'C','1,4':'M','4,1':'Y','2,5':'Y','5,0':'M','0,3':'C'},gates:[{at:[2,4],want:[0,1,0]},{at:[2,1],want:[0,0,1]}],start:[3,0],exit:[5,6],prism:{at:[3,2],color:null},
+  solInput:[[3,0],[3,1],[3,2]],
+  solBeams:{R:[[3,3],[3,4],[3,5],[3,6],[4,6],[5,6]],G:[[2,3],[2,4],[1,4],[1,5],[1,6],[2,6],[3,6],[4,6],[5,6]],B:[[2,2],[2,1],[3,1],[4,1],[4,2],[4,3],[5,3],[5,4],[5,5],[5,6]]}},
+ {name:'P5 · The Yellow Prism',rows:5,cols:7,set:'PRISMS — HARDER',
+  hint:'Finale. The gate before the <b>YELLOW prism</b> wants clean <b>WHITE</b> light — detour through the trap filters above the prism and you will be rejected. Yellow eats blue, so 2 beams come out; the green beam has its own gate, and the red beam must cross a decoy Yellow <i>after</i> it has already gone black.',
+  filters:{'2,1':'Y','2,2':'M','3,6':'C','1,5':'M','4,4':'M','2,6':'Y'},gates:[{at:[3,2],want:[1,1,1]},{at:[1,4],want:[0,1,0]}],start:[3,0],exit:[1,6],prism:{at:[3,3],color:'Y'},
+  solInput:[[3,0],[3,1],[3,2],[3,3]],
+  solBeams:{R:[[3,4],[3,5],[3,6],[2,6],[1,6]],G:[[2,4],[1,4],[1,5],[1,6]]}}
+];
+let li=0, path=[], beams=[], activeBeam=-1, phase='input', dragging=false, won=false, shake=0, playTimer=null, entryDir=[0,1];
+const msg=document.getElementById('msg'), hud=document.getElementById('hud'), hintEl=document.getElementById('hint'), beamBar=document.getElementById('beams');
+const lvBar=document.getElementById('levels');
+let lastSet='';
+LEVELS.forEach((L,i)=>{ if(L.set!==lastSet){ lastSet=L.set; const s=document.createElement('div'); s.className='setlabel'; s.textContent=L.set; lvBar.appendChild(s); }
+  const b=document.createElement('button'); b.textContent=L.name; b.id='lv'+i; b.onclick=()=>load(i); lvBar.appendChild(b); });
+
+function key(r,c){return r+','+c;}
+function applyF(b,f){const a=b.slice(); if(f==='C')a[0]=0; if(f==='M')a[1]=0; if(f==='Y')a[2]=0; return a;}
+function rgbOf(b){return 'rgb('+(b[0]*255)+','+(b[1]*255)+','+(b[2]*255)+')';}
+function bits(b){return b.join('');}
+function gateAt(L,r,c){ return (L.gates||[]).find(g=>g.at[0]===r&&g.at[1]===c) || null; }
+function stateAlong(L,p,init){ let st=init.slice(); for(let k=0;k<p.length;k++){ const f=L.filters[key(p[k][0],p[k][1])]; if(f) st=applyF(st,f);} return st; }
+function inputState(){ const L=LEVELS[li]; return stateAlong(L,path,[1,1,1]); }
+function beamState(bm){ const L=LEVELS[li]; return stateAlong(L,bm.path,bm.bits); }
+function layout(L){ const span=580, cell=span/Math.max(L.cols-1,L.rows-1);
+  const ox=(880-cell*(L.cols-1))/2, oy=(880-cell*(L.rows-1))/2;
+  return {cell,pt:(p)=>[ox+p[1]*cell, oy+p[0]*cell]}; }
+
+function load(i){ li=i; if(playTimer){clearInterval(playTimer); playTimer=null;}
+  const L=LEVELS[i]; path=[L.start.slice()]; beams=[]; activeBeam=-1; phase='input'; won=false; dragging=false;
+  LEVELS.forEach((_,j)=>document.getElementById('lv'+j).classList.toggle('on',j===i));
+  hintEl.innerHTML='<b>'+L.name+'.</b> '+L.hint;
+  document.getElementById('next').style.display='none';
+  beamBar.innerHTML='';
+  setMsg(L.prism?'Draw your light into the PRISM.':'Drag from START to begin.','');
+  draw(); updateHud();
+}
+function setMsg(t,cls){ msg.textContent=t; msg.className=cls||''; }
+function err(t){ setMsg(t,'err'); shake=6; const iv=setInterval(()=>{ draw(); if(--shake<=0){clearInterval(iv); draw();} },40); }
+function updateHud(){
+  const L=LEVELS[li];
+  if(phase==='beams'&&beams.length){ const bm=beams[activeBeam]; const st=beamState(bm);
+    hud.innerHTML='Now drawing: <span class="chip" style="background:'+rgbOf(bm.bits)+'"></span> <b>'+NAMES[bits(bm.bits)]+' beam</b> — its light now: <span class="chip" style="background:'+rgbOf(st)+'"></span> <b>'+NAMES[bits(st)]+'</b>';
+  } else { const st=inputState();
+    hud.innerHTML='Your light: <span class="chip" style="background:'+rgbOf(st)+'"></span> <b>'+NAMES[bits(st)]+'</b>'+
+     ' <span class="pill" style="'+(st[0]?'background:#ff2b2b;color:#fff;border-color:#ff2b2b':'opacity:.35')+'">R</span>'+
+     ' <span class="pill" style="'+(st[1]?'background:#22cc44;color:#04150a;border-color:#22cc44':'opacity:.35')+'">G</span>'+
+     ' <span class="pill" style="'+(st[2]?'background:#2255ff;color:#fff;border-color:#2255ff':'opacity:.35')+'">B</span>';
+  }
+  beamBar.innerHTML='';
+  beams.forEach((bm,i)=>{ const b=document.createElement('button');
+    b.innerHTML='<span class="chip" style="background:'+rgbOf(bm.bits)+'"></span> '+NAMES[bits(bm.bits)]+' beam'+(bm.delivered?' \u2713 delivered':'');
+    if(i===activeBeam&&!bm.delivered) b.className='on';
+    b.onclick=()=>{ if(!bm.delivered){ activeBeam=i; setMsg('Drawing the '+NAMES[bits(bm.bits)]+' beam. Kill it with '+(bm.ch==='R'?'a CYAN filter':bm.ch==='G'?'a MAGENTA filter':'a YELLOW filter')+'.',''); draw(); updateHud(); } };
+    beamBar.appendChild(b); });
+}
+
+function drawPathGeneric(L,p,init,width){
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  for(let i=0;i<p.length-1;i++){
+    const st=stateAlong(L,p.slice(0,i+1),init), a=layout(L).pt(p[i]), b=layout(L).pt(p[i+1]);
+    if(bits(st)==='000'){ ctx.strokeStyle='#787f88'; ctx.lineWidth=width+5;
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); }
+    ctx.strokeStyle=rgbOf(st); ctx.lineWidth=width;
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+}
+function draw(){
+  const L=LEVELS[li], Ly=layout(L);
+  ctx.clearRect(0,0,880,880);
+  ctx.fillStyle='#14161a'; ctx.beginPath(); ctx.roundRect(0,0,880,880,36); ctx.fill();
+  const sx=shake? (Math.random()*10-5):0, sy=shake? (Math.random()*8-4):0;
+  ctx.save(); ctx.translate(sx,sy);
+  ctx.strokeStyle='#3a3f47'; ctx.lineWidth=4;
+  for(let r=0;r<L.rows;r++){ctx.beginPath(); ctx.moveTo(...Ly.pt([r,0])); ctx.lineTo(...Ly.pt([r,L.cols-1])); ctx.stroke();}
+  for(let c=0;c<L.cols;c++){ctx.beginPath(); ctx.moveTo(...Ly.pt([0,c])); ctx.lineTo(...Ly.pt([L.rows-1,c])); ctx.stroke();}
+  drawPathGeneric(L,path,[1,1,1],13);
+  if(L.prism&&beams.length){ const pc=Ly.pt(L.prism.at);
+    ctx.lineCap='round';
+    beams.forEach(bm=>{ const lp=Ly.pt(bm.path[0]);
+      ctx.strokeStyle=rgbOf(bm.bits); ctx.lineWidth=9;
+      ctx.beginPath(); ctx.moveTo(pc[0],pc[1]); ctx.lineTo(lp[0],lp[1]); ctx.stroke(); }); }
+  beams.forEach((bm,i)=>drawPathGeneric(L,bm.path,bm.bits,(i===activeBeam&&!bm.delivered)?13:9));
+  const used=new Set(); path.forEach(p=>used.add(key(p[0],p[1]))); beams.forEach(bm=>bm.path.forEach(p=>used.add(key(p[0],p[1]))));
+  for(let r=0;r<L.rows;r++)for(let c=0;c<L.cols;c++){
+    const [x,y]=Ly.pt([r,c]); const f=L.filters[key(r,c)];
+    const isStart=L.start[0]===r&&L.start[1]===c, isExit=L.exit[0]===r&&L.exit[1]===c,
+          isPrism=L.prism&&L.prism.at[0]===r&&L.prism.at[1]===c, g=gateAt(L,r,c),
+          headIn=path.length&&path[path.length-1][0]===r&&path[path.length-1][1]===c;
+    if(isExit){ ctx.fillStyle= won?'#0d3517':'#000'; ctx.strokeStyle= won?'#39d353':'#9aa0a8'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.roundRect(x-31,y-31,62,62,12); ctx.fill(); ctx.stroke();
+      if(won){ ctx.fillStyle='#7dff9a'; ctx.font='800 34px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('\u2713',x,y+2); ctx.textBaseline='alphabetic'; }
+      ctx.fillStyle='#e8e8e8'; ctx.font='700 19px system-ui'; ctx.textAlign='center'; ctx.fillText(L.prism?'COLLECTOR':'EXIT',x,y+62); }
+    else if(isPrism){ const col=L.prism.color;
+      ctx.beginPath(); ctx.moveTo(x+36,y); ctx.lineTo(x-26,y-30); ctx.lineTo(x-26,y+30); ctx.closePath();
+      if(col){ ctx.fillStyle=INK[col]; ctx.globalAlpha=.9; ctx.fill(); ctx.globalAlpha=1; }
+      else { ctx.fillStyle='#e8e8e8'; ctx.fill(); }
+      ctx.strokeStyle='#0e1013'; ctx.lineWidth=3; ctx.stroke();
+      if(!col){ ctx.fillStyle='#ff2b2b'; ctx.fillRect(x-20,y-4,34,8); ctx.fillStyle='#22cc44'; ctx.fillRect(x-20,y+5,34,5); ctx.fillStyle='#2255ff'; ctx.fillRect(x-20,y+11,34,4); }
+      ctx.fillStyle='#e8e8e8'; ctx.font='700 19px system-ui'; ctx.textAlign='center';
+      ctx.fillText(col? col==='C'?'CYAN PRISM':col==='M'?'MAGENTA PRISM':'YELLOW PRISM':'PRISM',x,y+64); }
+    else if(g){ const gc=rgbOf(g.want);
+      ctx.strokeStyle=gc; ctx.lineWidth=11; ctx.beginPath(); ctx.arc(x,y,32,0,7); ctx.stroke();
+      ctx.fillStyle=gc; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill();
+      ctx.fillStyle=gc; ctx.font='700 18px system-ui'; ctx.textAlign='center'; ctx.fillText(NAMES[bits(g.want)]+' GATE',x,y+66); }
+    else if(isStart){ ctx.fillStyle='#fff'; ctx.strokeStyle= headIn&&phase==='input'?'#4da3ff':'#888'; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#e8e8e8'; ctx.font='700 19px system-ui'; ctx.textAlign='center'; ctx.fillText('START',x,y-46); }
+    else if(f){ ctx.fillStyle=INK[f]; ctx.beginPath(); ctx.arc(x,y,27,0,7); ctx.fill();
+      if(used.has(key(r,c))){ ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(x,y,31,0,7); ctx.stroke(); }
+      ctx.fillStyle=f==='Y'?'#5a4700':'#14161a'; ctx.font='800 26px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(f,x,y+2); ctx.textBaseline='alphabetic'; }
+    else { ctx.fillStyle='#2a2e35'; ctx.strokeStyle='#555c66'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fill(); ctx.stroke(); }
+  }
+  // beam end markers
+  beams.forEach((bm,i)=>{ if(bm.delivered) return; const end=bm.path[bm.path.length-1]; const [x,y]=Ly.pt(end);
+    ctx.strokeStyle=rgbOf(beamState(bm)); ctx.lineWidth=i===activeBeam?6:3;
+    ctx.beginPath(); ctx.arc(x,y,42,0,7); ctx.stroke(); });
+  ctx.restore();
+}
+
+function splitPrism(r,c){
+  const L=LEVELS[li];
+  const prev=path[path.length-2]||L.start;
+  entryDir=[r-prev[0],c-prev[1]];
+  let st=inputState(); // state of light arriving (prism node itself has no filter)
+  if(L.prism.color) st=applyF(st,L.prism.color);
+  const lp={ '-1,0':[-1,0], '1,0':[1,0], '0,-1':[0,-1], '0,1':[0,1] };
+  const left=[-entryDir[1],entryDir[0]];
+  const land={ R:[r+entryDir[0],c+entryDir[1]], G:[r+entryDir[0]+left[0],c+entryDir[1]+left[1]], B:[r+left[0],c+left[1]] };
+  beams=[];
+  CH.forEach(([ch,b])=>{ const idx=ch==='R'?0:ch==='G'?1:2;
+    if(st[idx]===1){ beams.push({ch,bits:b.slice(),path:[land[ch].slice()],delivered:false}); } });
+  phase='beams'; activeBeam=0;
+  const names=beams.map(bm=>NAMES[bits(bm.bits)]).join(' + ');
+  setMsg('The prism split your light into '+beams.length+' beam'+(beams.length>1?'s':'')+': '+names+'. Draw each beam to the COLLECTOR \u2014 but only a BLACK beam may enter it.','');
+  draw(); updateHud();
+}
+
+function tryAddInput(r,c){
+  const L=LEVELS[li]; if(won||phase!=='input') return;
+  const last=path[path.length-1];
+  if(last[0]===r&&last[1]===c) return;
+  if(path.length>1){ const prev=path[path.length-2]; if(prev[0]===r&&prev[1]===c){ path.pop(); setMsg('Stepped back.',''); draw(); updateHud(); return; } }
+  if(Math.abs(last[0]-r)+Math.abs(last[1]-c)!==1) return;
+  if(path.some(p=>p[0]===r&&p[1]===c)) return;
+  const stBefore=inputState();
+  const isExit=L.exit[0]===r&&L.exit[1]===c, isPrism=L.prism&&L.prism.at[0]===r&&L.prism.at[1]===c, g=gateAt(L,r,c);
+  if(g&&bits(stBefore)!==bits(g.want)){ err('The '+NAMES[bits(g.want)]+' GATE rejects your '+NAMES[bits(stBefore)]+' light.'); return; }
+  if(isExit&&!L.prism){ if(bits(stBefore)!=='000'){ err('The EXIT stays shut \u2014 you arrived carrying '+NAMES[bits(stBefore)]+' light. It only opens for BLACK.'); return; } }
+  if(isExit&&L.prism){ err('The COLLECTOR only takes beams from the prism \u2014 draw into the PRISM first.'); return; }
+  path.push([r,c]);
+  if(isPrism){ splitPrism(r,c); return; }
+  if(g) setMsg('Gate passed \u2014 your light was exactly '+NAMES[bits(g.want)]+'.','');
+  else if(isExit){ won=true; setMsg('\u2605 BLACK \u2014 the exit opens. Level complete!','win'); finishLevel(); }
+  else { const f=L.filters[key(r,c)]; setMsg(f? 'Passed the '+f+' filter \u2014 your light is now '+NAMES[bits(inputState())]+'.':'',''); }
+  draw(); updateHud();
+}
+function tryAddBeam(r,c){
+  const L=LEVELS[li]; if(won||phase!=='beams'||activeBeam<0) return;
+  const bm=beams[activeBeam]; if(bm.delivered) return;
+  const last=bm.path[bm.path.length-1];
+  if(last[0]===r&&last[1]===c) return;
+  if(bm.path.length>1){ const prev=bm.path[bm.path.length-2]; if(prev[0]===r&&prev[1]===c){ bm.path.pop(); setMsg('Beam stepped back.',''); draw(); updateHud(); return; } }
+  if(Math.abs(last[0]-r)+Math.abs(last[1]-c)!==1) return;
+  if(bm.path.some(p=>p[0]===r&&p[1]===c)) return;
+  if(L.prism.at[0]===r&&L.prism.at[1]===c){ err('Beams cannot re-enter the prism.'); return; }
+  for(let i=0;i<beams.length;i++){ if(i!==activeBeam&&!beams[i].delivered){ const e=beams[i].path[beams[i].path.length-1];
+    if(e[0]===r&&e[1]===c){ activeBeam=i; setMsg('Switched to the '+NAMES[bits(beams[i].bits)]+' beam.',''); draw(); updateHud(); return; } } }
+  const stBefore=beamState(bm);
+  const isExit=L.exit[0]===r&&L.exit[1]===c, g=gateAt(L,r,c);
+  if(g&&bits(stBefore)!==bits(g.want)){ err('The '+NAMES[bits(g.want)]+' GATE rejects the beam\u2019s '+NAMES[bits(stBefore)]+' light. (Kill the beam only AFTER its gate.)'); return; }
+  if(isExit){ if(bits(stBefore)!=='000'){ err('The COLLECTOR refuses the '+NAMES[bits(bm.bits)]+' beam \u2014 it arrived still '+NAMES[bits(stBefore)]+'. It needs '+(bm.ch==='R'?'a CYAN':bm.ch==='G'?'a MAGENTA':'a YELLOW')+' filter first.'); return; }
+    bm.path.push([r,c]); bm.delivered=true;
+    const left=beams.filter(b=>!b.delivered);
+    if(!left.length){ won=true; setMsg('\u2605 All beams delivered BLACK \u2014 level complete!','win'); finishLevel(); }
+    else { activeBeam=beams.indexOf(left[0]); setMsg(NAMES[bits(bm.bits)]+' beam delivered \u2713 \u2014 '+left.length+' to go. Now the '+NAMES[bits(left[0].bits)]+' beam.',''); }
+    draw(); updateHud(); return; }
+  bm.path.push([r,c]);
+  const f=L.filters[key(r,c)];
+  setMsg(f? 'The '+NAMES[bits(bm.bits)]+' beam passed the '+f+' filter \u2014 now '+NAMES[bits(beamState(bm))]+'.':'','');
+  draw(); updateHud();
+}
+function tryAdd(r,c){ phase==='beams'? tryAddBeam(r,c) : tryAddInput(r,c); }
+function finishLevel(){ if(li<LEVELS.length-1) document.getElementById('next').style.display='';
+  document.getElementById('lv'+li).textContent=LEVELS[li].name+' \u2713'; }
+
+function nodeAt(mx,my){
+  const L=LEVELS[li], Ly=layout(L);
+  for(let r=0;r<L.rows;r++)for(let c=0;c<L.cols;c++){ const [x,y]=Ly.pt([r,c]);
+    if(Math.hypot(mx-x,my-y) < Ly.cell*0.46) return [r,c]; }
+  return null;
+}
+function evPos(e){ const rect=cv.getBoundingClientRect();
+  return [ (e.clientX-rect.left)*880/rect.width, (e.clientY-rect.top)*880/rect.height ]; }
+function curHead(){ if(phase==='beams'&&activeBeam>=0){ const bm=beams[activeBeam]; return bm.path[bm.path.length-1]; } return path[path.length-1]; }
+cv.addEventListener('pointerdown',e=>{ const n=nodeAt(...evPos(e)); if(!n) return;
+  const h=curHead();
+  if(n[0]===h[0]&&n[1]===h[1]){ dragging=true; cv.setPointerCapture(e.pointerId); }
+  else tryAdd(n[0],n[1]);
+});
+cv.addEventListener('pointermove',e=>{ if(!dragging) return; const n=nodeAt(...evPos(e)); if(n) tryAdd(n[0],n[1]); });
+cv.addEventListener('pointerup',()=>{ dragging=false; });
+document.getElementById('undo').onclick=()=>{ if(playTimer){clearInterval(playTimer);playTimer=null;}
+  if(won) return;
+  if(phase==='beams'&&activeBeam>=0){ const bm=beams[activeBeam];
+    if(!bm.delivered&&bm.path.length>1){ bm.path.pop(); setMsg('Beam stepped back.',''); draw(); updateHud(); } }
+  else if(path.length>1){ path.pop(); setMsg('Stepped back.',''); draw(); updateHud(); } };
+document.getElementById('clear').onclick=()=>load(li);
+document.getElementById('next').onclick=()=>load(Math.min(li+1,LEVELS.length-1));
+document.getElementById('playsol').onclick=()=>{
+  if(playTimer) clearInterval(playTimer);
+  const L=LEVELS[li]; load(li);
+  const steps=[];
+  if(L.prism){ L.solInput.slice(1).forEach(p=>steps.push({beam:null,p}));
+    ['R','G','B'].forEach(ch=>{ if(L.solBeams[ch]) L.solBeams[ch].slice(1).forEach(p=>steps.push({beam:ch,p})); });
+  } else L.sol.slice(1).forEach(p=>steps.push({beam:null,p}));
+  let i=0;
+  playTimer=setInterval(()=>{ if(i>=steps.length){ clearInterval(playTimer); playTimer=null; return; }
+    const s=steps[i++];
+    if(s.beam){ const bi=beams.findIndex(b=>b.ch===s.beam); if(bi>=0) activeBeam=bi; tryAddBeam(s.p[0],s.p[1]); }
+    else tryAddInput(s.p[0],s.p[1]);
+  },320);
+};
+load(0);
+</script>
+</body>
+</html>

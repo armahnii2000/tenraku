@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Black Box — learn it by firing</title>
+<style>
+  :root{--bg:#0e1013;--panel:#171a20;--txt:#eef0f3;--mut:#9aa3ad;--line:#3a3f47}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center}
+  .wrap{max-width:520px;width:100%;padding:18px 14px 32px}
+  h1{font-size:20px;text-align:center;margin:4px 0 6px}
+  .rule{font-size:14px;color:var(--mut);text-align:center;line-height:1.6;margin:0 8px 4px}
+  .rule b{color:var(--txt)}
+  svg{display:block;margin:0 auto;max-width:100%;height:auto;touch-action:manipulation}
+  .edge{cursor:pointer}
+  button{font:inherit;font-size:13.5px;padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:#1d2129;color:var(--txt);cursor:pointer;margin:4px}
+  button.on{background:#4da3ff;border-color:#4da3ff;color:#fff}
+  .row{display:flex;justify-content:center;flex-wrap:wrap;gap:2px;margin-top:8px}
+  #msg{font-size:14px;text-align:center;min-height:42px;line-height:1.55;margin-top:10px;padding:0 6px}
+  #log{font-size:12.5px;color:var(--mut);line-height:1.7;margin-top:6px}
+  .hint{font-size:12.5px;color:var(--mut);text-align:center;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Black Box — learn it by firing</h1>
+  <p class="rule"><b>3 balls are hidden</b> in the box. Light travels <b>straight</b>.<br>
+  A ball <b>dead ahead</b> stops it. A ball at its <b>corner</b> pushes it 90&deg; away.<br>
+  Tap any <b>yellow rim square</b> to fire a ray in.</p>
+  <p class="hint">When you think you know where the balls are, switch to <b>Mark balls</b>, tap 3 cells, and check.</p>
+  <div id="board"></div>
+  <div class="row">
+    <button id="modeFire" class="on">🔦 Fire rays</button>
+    <button id="modeMark">🎯 Mark balls</button>
+    <button id="check" style="display:none">Check my 3 marks</button>
+    <button id="reset">↺ New shots</button>
+  </div>
+  <div id="msg">Fire a few rays. Watch <i>where they come out</i> — the mismatch is the clue.</div>
+  <div id="log"></div>
+</div>
+<script>
+const BALLS=new Set(['2,0','1,2','3,3']);
+const K=(r,c)=>r+','+c, inside=(r,c)=>r>=0&&r<5&&c>=0&&c<5;
+// Canonical Black Box ray walk. Returns {kind, pts} where pts are [row,col]
+// coordinates in cell units (centres), possibly outside the 0..4 range.
+function fire(r0,c0,dr,dc){
+  let r=r0,c=c0; const pts=[[r,c]]; let guard=0;
+  while(guard++<200){
+    const ar=r+dr, ac=c+dc, L=[-dc,dr];
+    const dl=[ar+L[0],ac+L[1]], drr=[ar-L[0],ac-L[1]];
+    const out=!inside(r,c);
+    if(inside(ar,ac)&&BALLS.has(K(ar,ac))){ pts.push([ar,ac]); return {kind:'H',pts}; }
+    const bl=inside(dl[0],dl[1])&&BALLS.has(K(dl[0],dl[1]));
+    const br=inside(drr[0],drr[1])&&BALLS.has(K(drr[0],drr[1]));
+    if(out&&(bl||br)){ pts.push([r+dr*0.45,c+dc*0.45]); return {kind:'R',pts}; }
+    if(bl&&br){ dr=-dr; dc=-dc; continue; }
+    if(bl){ const nd=[-L[0],-L[1]]; dr=nd[0]; dc=nd[1]; continue; }
+    if(br){ dr=L[0]; dc=L[1]; continue; }
+    if(!inside(ar,ac)){ pts.push([ar,ac]); return {kind:'EXIT',pts,exit:[r,c]}; }
+    r=ar; c=ac; pts.push([r,c]);
+  }
+  return {kind:'LOOP',pts};
+}
+// ---- rendering ----
+const CELL=56, OFF=44, S=CELL*5+OFF*2;
+const NS='http://www.w3.org/2000/svg';
+const board=document.getElementById('board');
+let mode='fire', marks=new Set(), shots=[], lastPath=null, revealed=false;
+function el(n,attrs,parent){ const e=document.createElementNS(NS,n); for(const k in attrs)e.setAttribute(k,attrs[k]); (parent||svg).appendChild(e); return e; }
+let svg;
+function X(c){ return OFF+c*CELL+CELL/2; } function Y(r){ return OFF+r*CELL+CELL/2; }
+function render(){
+  board.innerHTML='';
+  svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('width',S); svg.setAttribute('height',S); svg.setAttribute('viewBox','0 0 '+S+' '+S);
+  board.appendChild(svg);
+  for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+    const rect=el('rect',{x:OFF+c*CELL,y:OFF+r*CELL,width:CELL,height:CELL,fill:marks.has(K(r,c))?'#4a3520':'#1a1e26',stroke:'#3a3f47'});
+    if(marks.has(K(r,c))){ const t=el('text',{x:X(c),y:Y(r),'text-anchor':'middle','dominant-baseline':'central','font-size':22,fill:'#ffb84d'}); t.textContent='?'; }
+    if(revealed&&BALLS.has(K(r,c))) el('circle',{cx:X(c),cy:Y(r),r:16,fill:'#eef0f3',stroke:'#111','stroke-width':2});
+    rect.addEventListener('click',()=>{ if(mode==='mark'&&!revealed){
+      const k=K(r,c); if(marks.has(k)) marks.delete(k); else if(marks.size<3) marks.add(k);
+      document.getElementById('check').style.display=marks.size===3?'':'none'; render(); } });
+  }
+  // rim firing squares
+  const entries=[];
+  for(let c=0;c<5;c++){ entries.push({r:-1,c:c,dr:1,dc:0}); entries.push({r:5,c:c,dr:-1,dc:0}); }
+  for(let r=0;r<5;r++){ entries.push({r:r,c:-1,dr:0,dc:1}); entries.push({r:r,c:5,dr:0,dc:-1}); }
+  entries.forEach(e=>{
+    const x = e.c===-1?OFF-34 : e.c===5?OFF+5*CELL+6 : OFF+e.c*CELL+8;
+    const y = e.r===-1?OFF-34 : e.r===5?OFF+5*CELL+6 : OFF+e.r*CELL+8;
+    const sq=el('rect',{x:x,y:y,width:CELL-16,height:CELL-16,rx:6,fill:'#ffd800',opacity:.85,class:'edge'});
+    sq.addEventListener('click',()=>doFire(e));
+    const done=shots.find(s=>s.e.r===e.r&&s.e.c===e.c);
+    if(done){ const t=el('text',{x:x+(CELL-16)/2,y:y+(CELL-16)/2,'text-anchor':'middle','dominant-baseline':'central','font-size':13,'font-weight':800,fill:'#14161a'});
+      t.textContent=done.label; }
+  });
+  if(lastPath){
+    const pts=lastPath.pts.map(p=>X(p[1])+','+Y(p[0])).join(' ');
+    el('polyline',{points:pts,fill:'none',stroke:'#4da3ff','stroke-width':6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.95});
+    const end=lastPath.pts[lastPath.pts.length-1];
+    if(lastPath.kind==='H') el('circle',{cx:X(end[1]),cy:Y(end[0]),r:9,fill:'#ff5a5a'});
+  }
+}
+const sideName=e=> e.r===-1?'top, column '+(e.c+1) : e.r===5?'bottom, column '+(e.c+1) : e.c===-1?'left, row '+(e.r+1) : 'right, row '+(e.r+1);
+function doFire(e){
+  if(mode!=='fire') return;
+  if(shots.some(s=>s.e.r===e.r&&s.e.c===e.c)) return;
+  const res=fire(e.r,e.c,e.dr,e.dc); lastPath=res;
+  let label, text;
+  if(res.kind==='H'){ label='H'; text='💥 <b>Hit.</b> Fired from the '+sideName(e)+': the ray died inside — a ball is <b>dead ahead</b> somewhere on that line.'; }
+  else if(res.kind==='R'){ label='R'; text='↩️ <b>Reflected.</b> Fired from the '+sideName(e)+': bounced straight back — a ball is sitting <b>beside that doorway</b>.'; }
+  else { const ex=res.exit; const outSide = ex[0]===-1?'top, column '+(ex[1]+1) : ex[0]===5?'bottom, column '+(ex[1]+1) : ex[1]===-1?'left, row '+(ex[0]+1) : 'right, row '+(ex[0]+1);
+    const straight = (e.r===-1&&ex[0]===5&&ex[1]===e.c)||(e.r===5&&ex[0]===-1&&ex[1]===e.c)||(e.c===-1&&ex[1]===5&&ex[0]===e.r)||(e.c===5&&ex[1]===-1&&ex[0]===e.r);
+    label= straight?'=':'↗';
+    text= straight? '➡️ <b>Straight through.</b> In at the '+sideName(e)+', out the exact opposite side — nothing touched it.'
+                   : '🔀 <b>Deflected!</b> In at the '+sideName(e)+', out at the <b>'+outSide+'</b> — a ball\u2019s <b>corner</b> pushed it. The bend happened somewhere along the blue path.'; }
+  shots.push({e,label});
+  document.getElementById('msg').innerHTML=text;
+  document.getElementById('log').innerHTML=shots.map(s=>'<div>• '+sideName(s.e)+' → <b>'+s.label+'</b>'+(s.label==='H'?' (hit)':s.label==='R'?' (reflected)':s.label==='='?' (straight)':' (deflected)')+'</div>').join('');
+  render();
+}
+document.getElementById('modeFire').onclick=()=>{ mode='fire'; document.getElementById('modeFire').className='on'; document.getElementById('modeMark').className=''; document.getElementById('check').style.display='none'; render(); };
+document.getElementById('modeMark').onclick=()=>{ mode='mark'; document.getElementById('modeMark').className='on'; document.getElementById('modeFire').className=''; document.getElementById('check').style.display=marks.size===3?'':'none'; render(); };
+document.getElementById('check').onclick=()=>{
+  let right=0; marks.forEach(k=>{ if(BALLS.has(k)) right++; });
+  revealed=true; render();
+  document.getElementById('msg').innerHTML = right===3
+    ? '🎉 <b>All 3 balls found.</b> That\u2019s the whole game — you deduced invisible things from bent light. Reset to play again.'
+    : 'You found <b>'+right+' of 3</b>. The real balls are the white circles now shown — compare them with the rays you fired. Reset and try to need fewer shots.';
+};
+document.getElementById('reset').onclick=()=>{ shots=[]; marks=new Set(); lastPath=null; revealed=false;
+  document.getElementById('msg').innerHTML='Fresh box, same hidden balls. Fire a few rays.'; document.getElementById('log').innerHTML='';
+  document.getElementById('check').style.display='none'; render(); };
+render();
+</script>
+</body>
+</html>

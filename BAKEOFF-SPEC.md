@@ -48,3 +48,25 @@ Notation: T/B/L/R + number = rim point (e.g. T3 = top column 3, L2 = left row 2)
 structure is the new one): Sarah's message — *"We're pregnant! 💕 Can't wait to
 tell our families tonight."* — plus the ultrasound photo in the phone and the
 calendar item *4:00 PM Hackathon AI Demo*. Phone state: bright morning, 100% battery.
+
+---
+
+## Results
+
+### Round 1 — Flutter (2026-10-21)
+- **Stack:** Flutter SDK 3.47.7 installed fresh on the Mac (~4 min incl. download);
+  project at `~/Projects/tenraku_engine_test` on the Mac; web build served locally.
+- **Physics:** Dart port of the ray walk matched the 32-outcome table **32/32 on
+  the first run** (`sim_check.dart`).
+- **AI mistakes fixed: 1** — `debugShowCheckedBanner` had been renamed
+  (`debugShowCheckedModeBanner`) in current Flutter; plus removing the template's
+  leftover widget test that referenced the stock app class.
+- **Wall-clock:** ~35 min total for the round, SDK download included; first web
+  compile ~33 s once fixed.
+- **Look/feel evidence:** all 5 states screenshot-verified (home, board, both
+  probes fired with correct beams/labels, forced banner over dimmed board,
+  Messages scene). Beams render exactly per the verified table.
+- **Known blemishes (art, not engine):** ultrasound is a painted placeholder
+  (abstract glowing wedge); board styling clean but plain. Code is a single
+  ~700-line main.dart + the engine file.
+

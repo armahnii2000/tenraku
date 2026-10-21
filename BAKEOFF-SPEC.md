@@ -1,5 +1,7 @@
 # Engine Test — Exact Build Spec (agreed 2026-10-21)
 
+**Build order (George, 2026-10-21): Flutter first, then Unity, then Godot.**
+
 Every engine (Godot, Unity, Flutter) builds THIS, identically. Judged on: build time,
 AI mistakes to fix, animation feel, and look (crisp text, board glow in the dark).
 
@@ -14,9 +16,9 @@ AI mistakes to fix, animation feel, and look (crisp text, board glow in the dark
 ## The exact puzzle — Black Box, "L"
 - **Board: 8×8.** Rows numbered 1–8 top→bottom, columns 1–8 left→right.
   32 rim firing points (8 per side).
-- **5 hidden motes**, placed to spell an **L** — vertical bar of four in column 3,
-  foot pointing right at the bottom:
-  **(3,3), (4,3), (5,3), (6,3), (6,4)** in (row, column).
+- **5 hidden motes**, placed to spell an **L** — **3 vertical, 2 horizontal**
+  (George's correction, 2026-10-21): three down column 3, then the foot runs
+  right along row 5: **(3,3), (4,3), (5,3), (5,4), (5,5)** in (row, column).
 
 ```
 col:   1 2 3 4 5 6 7 8
@@ -24,8 +26,8 @@ row 1  . . . . . . . .
 row 2  . . . . . . . .
 row 3  . . ● . . . . .
 row 4  . . ● . . . . .
-row 5  . . ● . . . . .
-row 6  . . ● ● . . . .
+row 5  . . ● ● ● . . .
+row 6  . . . . . . . .
 row 7  . . . . . . . .
 row 8  . . . . . . . .
 ```
@@ -37,9 +39,9 @@ row 8  . . . . . . . .
 
 ## Full outcome table for this layout (all 32 entries, verified)
 Notation: T/B/L/R + number = rim point (e.g. T3 = top column 3, L2 = left row 2).
-- **Hits (10):** T3, B3, B4, L3, L4, L5, L6, R3, R4, R6
-- **Deflected (5 pairs, 10 entries):** T2↔L2, T4↔R2, T5↔R5, B2↔L7, B5↔R7
-- **Straight through (6 pairs, 12 entries):** T1↔B1, T6↔B6, T7↔B7, T8↔B8, L1↔R1, L8↔R8
+- **Hits (10):** T3, T5, B3, B4, B5, L3, L4, L5, R3, R5
+- **Deflected (5 pairs, 10 entries):** T2↔L2, T4↔R2, T6↔R4, B2↔L6, B6↔R6
+- **Straight through (6 pairs, 12 entries):** T1↔B1, T7↔B7, T8↔B8, L1↔R1, L7↔R7, L8↔R8
 - **Reflections (0):** this layout produces no R results.
 
 ## Scene content for step 4 (from the GDD's Stage 1 "Spark", content reused,

@@ -13,7 +13,8 @@ between puzzle clusters.
 
 ## What's in this repository
 
-This is the project's design vault and prototype library:
+This repository is where Tenraku is being built. So far it holds the
+design and the prototype library:
 
 - `PROGRESS.md` — current design status and open questions
 - `BAKEOFF-SPEC.md` — engine bake-off specification and results
@@ -35,12 +36,11 @@ No build step: open any `.html` file in a web browser.
 ## Status
 
 Part 1 is in design and prototyping: roughly 50 levels (about 10 per core
-puzzle type) and 12 story scenes across four chapters. The planned production
-engine is Unity (C#), picked from the engine bake-off in `BAKEOFF-SPEC.md`
-(the same test slice built in Flutter, Unity and Godot) — a different stack
-from my Godot/JavaScript projects. Browser prototyping continues while the
-Unity build is set up. This repository holds the design and the browser
-prototypes. See `ROADMAP.md` for the plan.
+puzzle type) and 12 story scenes across four chapters. The main work ahead
+is the full game build in Unity (C#), picked from the engine bake-off in
+`BAKEOFF-SPEC.md` (the same test slice built in Flutter, Unity and Godot) —
+a different stack from my Godot/JavaScript projects. Browser prototyping
+continues alongside it. See `ROADMAP.md` for the plan.
 
 ## License
 

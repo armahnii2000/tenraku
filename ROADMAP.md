@@ -16,8 +16,11 @@ paid mobile release. The scene at 3:32 AM bookends the beginning and the end.
 - [ ] Finalise the 12 scene scripts as phone-app sequences (Messages, Mail,
       Calendar, Photos)
 
-## Build (Flutter implementation)
+## Build (production engine not yet chosen)
 
+- [ ] Decide the production engine: complete the bake-off in
+      `BAKEOFF-SPEC.md` (same test slice in Flutter, Unity and Godot;
+      prototyping currently iterates in Flutter while the decision is open)
 - [ ] Phone home screen and app shell (Tenraku app icon, scripted
       notification banners that gate progress between clusters)
 - [ ] Playable implementations of the five core puzzle types

@@ -35,9 +35,12 @@ No build step: open any `.html` file in a web browser.
 ## Status
 
 Part 1 is in design and prototyping: roughly 50 levels (about 10 per core
-puzzle type) and 12 story scenes across four chapters. The full game
-implementation (Flutter) is under way; this repository holds the design and
-the browser prototypes it is built from. See `ROADMAP.md` for the plan.
+puzzle type) and 12 story scenes across four chapters. The production engine
+has not been chosen yet: the same test slice has been built in Flutter, Unity
+and Godot for an engine bake-off (see `BAKEOFF-SPEC.md`), and prototyping is
+currently iterating in Flutter while that decision is still open. This
+repository holds the design and the browser prototypes. See `ROADMAP.md`
+for the plan.
 
 ## License
 

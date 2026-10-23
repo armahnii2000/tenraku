@@ -2,7 +2,7 @@
 
 Tenraku is a light-based puzzle game in development for mobile. Its puzzles are
 built on light and colour — beams, filters and the RGB/CMY colour system —
-across five core puzzle types drawn from the Nikoli / Simon Tatham tradition:
+across five classic puzzle types drawn from the Nikoli / Simon Tatham tradition:
 Light Up, Black Box (presented in-game as "Black Lights"), Masyu,
 Hashiwokakero (Bridges) and Mid-Loop.
 
